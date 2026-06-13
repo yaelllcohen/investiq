@@ -146,6 +146,11 @@ REQUIRED OUTPUT:
       result = JSON.parse(match[0])
     }
   } catch (err) {
+    const status = (err as { status?: number }).status
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+    if (status === 429 || msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
+      return NextResponse.json({ error: 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.', rateLimited: true }, { status: 429 })
+    }
     console.error('[why-moving] Gemini error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'שגיאת AI — נסה שוב מאוחר יותר' }, { status: 503 })
   }

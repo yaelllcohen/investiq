@@ -200,9 +200,13 @@ export default function ScoreCard({ symbol }: { symbol: string }) {
     setError(null)
 
     fetch(`/api/ai-score/${encodeURIComponent(symbol)}`)
-      .then(r => r.json())
-      .then((d: ScoreData) => {
+      .then(async (r) => {
+        const d: ScoreData & { rateLimited?: boolean } = await r.json()
         if (dead) return
+        if (r.status === 429 || d.rateLimited) {
+          setError('⏳ הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.')
+          return
+        }
         if (d.error) { setError(d.error); return }
         setData(d)
       })

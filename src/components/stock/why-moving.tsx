@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { HelpCircle, X, Loader2 } from 'lucide-react'
+import { HelpCircle, X, Loader2, RefreshCw } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +14,7 @@ interface WhyData {
   benchData?: BenchInfo[]
   updatedAt?: string
   error?: string
+  rateLimited?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export default function WhyMoving({ symbol }: { symbol: string }) {
   const [data, setData]       = useState<WhyData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
+  const [rateLimited, setRateLimited] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
   // Close on outside click
@@ -51,18 +53,27 @@ export default function WhyMoving({ symbol }: { symbol: string }) {
   function toggle() {
     if (open) { setOpen(false); return }
     setOpen(true)
-    fetch_data()
+    // Use cache on first open — only bypass cache on explicit refresh
+    fetch_data(false)
   }
 
-  function fetch_data() {
+  function fetch_data(forceRefresh: boolean) {
     setLoading(true)
     setError(null)
-    // Always refresh — skip cache so user sees live data on each click
-    fetch(`/api/why-moving/${encodeURIComponent(symbol)}?refresh=true`)
-      .then(r => r.json())
-      .then((d: WhyData) => {
-        if (d.error) setError(d.error)
-        else setData(d)
+    setRateLimited(false)
+    const url = forceRefresh
+      ? `/api/why-moving/${encodeURIComponent(symbol)}?refresh=true`
+      : `/api/why-moving/${encodeURIComponent(symbol)}`
+    fetch(url)
+      .then(async (r) => {
+        const d: WhyData = await r.json()
+        if (r.status === 429 || d.rateLimited) {
+          setRateLimited(true)
+          setError(d.error ?? 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.')
+          return
+        }
+        if (d.error) { setError(d.error); return }
+        setData(d)
       })
       .catch(() => setError('שגיאה בטעינת הניתוח'))
       .finally(() => setLoading(false))
@@ -104,9 +115,21 @@ export default function WhyMoving({ symbol }: { symbol: string }) {
             <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>
               למה {symbol} זזה היום?
             </span>
-            <button onClick={() => setOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Manual refresh — only this bypasses the 1h cache */}
+              {data && !loading && !rateLimited && (
+                <button
+                  onClick={() => fetch_data(true)}
+                  title="רענן ניתוח (קריאת AI חדשה)"
+                  className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button onClick={() => setOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="px-4 py-4 space-y-3">
@@ -135,8 +158,19 @@ export default function WhyMoving({ symbol }: { symbol: string }) {
               </div>
             )}
 
-            {/* Error */}
-            {error && !loading && (
+            {/* Rate limit error */}
+            {error && rateLimited && !loading && (
+              <div className="rounded-lg px-3 py-3 text-center space-y-1"
+                style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)' }}>
+                <p className="text-xs font-medium" style={{ color: '#eab308' }}>⏳ מגבלת שימוש יומית</p>
+                <p className="text-[11px]" style={{ color: '#94a3b8' }}>
+                  הגעת למגבלת השימוש היומית של AI.<br />נסי שוב מחר.
+                </p>
+              </div>
+            )}
+
+            {/* Generic error */}
+            {error && !rateLimited && !loading && (
               <p className="text-xs text-red-400">{error}</p>
             )}
 

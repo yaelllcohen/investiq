@@ -511,19 +511,34 @@ const ASSET_CONFIG: Record<AssetType, {
 
 // ─── Gemini call ──────────────────────────────────────────────────────────────
 
+class RateLimitedError extends Error {
+  constructor() { super('RATE_LIMITED'); this.name = 'RateLimitedError' }
+}
+
 async function callGemini(prompt: string): Promise<Record<string, unknown>> {
-  const res = await gemini.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: prompt,
-    config: {
-      systemInstruction: 'You are a JSON-only API. Output valid JSON and nothing else. No markdown, no text outside JSON.',
-      maxOutputTokens: 2000,
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      thinkingConfig: { thinkingBudget: 0 } as any,
-    },
-  })
+  let res: Awaited<ReturnType<typeof gemini.models.generateContent>>
+  try {
+    res = await gemini.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: 'You are a JSON-only API. Output valid JSON and nothing else. No markdown, no text outside JSON.',
+        maxOutputTokens: 2000,
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        thinkingConfig: { thinkingBudget: 0 } as any,
+      },
+    })
+  } catch (err) {
+    // Detect Gemini rate limit (429 / RESOURCE_EXHAUSTED)
+    const status = (err as { status?: number }).status
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+    if (status === 429 || msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
+      throw new RateLimitedError()
+    }
+    throw err
+  }
 
   const raw = (res.text ?? '').trim()
   console.log(`[ai-score] raw first 150: ${raw.slice(0, 150)}`)
@@ -597,6 +612,9 @@ ${JSON_FOOTER(['momentum'])}`
     try {
       scoreData = await callGemini(prompt)
     } catch (err) {
+      if ((err as { name?: string }).name === 'RateLimitedError') {
+        return NextResponse.json({ error: 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.', rateLimited: true }, { status: 429 })
+      }
       console.error('[ai-score] Bizportal Gemini error:', err)
       return NextResponse.json({ error: 'שגיאת AI — נסה שוב מאוחר יותר' }, { status: 503 })
     }
@@ -680,6 +698,9 @@ ${JSON_FOOTER(['momentum'])}`
   try {
     scoreData = await callGemini(prompt)
   } catch (err) {
+    if ((err as { name?: string }).name === 'RateLimitedError') {
+      return NextResponse.json({ error: 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.', rateLimited: true }, { status: 429 })
+    }
     console.error('[ai-score] Gemini error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'שגיאת AI — נסה שוב מאוחר יותר' }, { status: 503 })
   }
