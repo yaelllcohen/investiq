@@ -8,6 +8,8 @@ import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 45
 
+const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+
 // ─── Indicator helpers ────────────────────────────────────────────────────────
 
 function sma(closes: number[], period: number): number | null {
@@ -49,6 +51,16 @@ export async function GET(
 
   const { symbol: rawSym } = await params
   const sym = rawSym.toUpperCase()
+
+  // ── 15-minute cache check ─────────────────────────────────────────────────
+  try {
+    const cached = await prisma.aiScore.findUnique({
+      where: { symbol_type: { symbol: sym, type: 'ai_levels' } },
+    })
+    if (cached && Date.now() - cached.createdAt.getTime() < CACHE_TTL) {
+      return NextResponse.json(JSON.parse(cached.scoreJson))
+    }
+  } catch { /* re-compute on cache miss */ }
 
   // ── Fetch quote + 200-day history in parallel ─────────────────────────────
   const period1 = new Date(Date.now() - 210 * 86400000).toISOString().split('T')[0]
@@ -151,6 +163,11 @@ REQUIRED JSON:
       aiData = JSON.parse(match[0])
     }
   } catch (err) {
+    const status = (err as { status?: number }).status
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+    if (status === 429 || msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
+      return NextResponse.json({ error: 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.', rateLimited: true }, { status: 429 })
+    }
     console.error('[ai-levels] Gemini error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'שגיאת AI — נסה שוב מאוחר יותר' }, { status: 503 })
   }
@@ -184,7 +201,7 @@ REQUIRED JSON:
   const finalRr   = risk > 0 ? Math.abs(target1 - entry) / risk : 0
   const rrString  = `1:${finalRr.toFixed(1)}`
 
-  return NextResponse.json({
+  const result = {
     symbol: sym,
     entry,
     stop,
@@ -200,5 +217,16 @@ REQUIRED JSON:
       rsi: rsiVal != null ? parseFloat(rsiVal.toFixed(1)) : null,
       support, resistance,
     },
-  })
+  }
+
+  // ── Cache for 15 minutes ─────────────────────────────────────────────────
+  try {
+    await prisma.aiScore.upsert({
+      where:  { symbol_type: { symbol: sym, type: 'ai_levels' } },
+      create: { symbol: sym, type: 'ai_levels', scoreJson: JSON.stringify(result) },
+      update: { scoreJson: JSON.stringify(result), createdAt: new Date() },
+    })
+  } catch { /* ignore cache write errors */ }
+
+  return NextResponse.json(result)
 }

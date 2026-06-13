@@ -210,11 +210,26 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
   const [chartData, setChartData]         = useState<ChartData[]>([])
   const [placingMode, setPlacingMode]     = useState<LevelType | null>(null)
   const [levels, setLevels]               = useState<Record<LevelType, number | null>>({ entry: null, stop: null, target: null })
-  const [aiLoading, setAiLoading]         = useState(false)
-  const [aiResult, setAiResult]           = useState<AiLevelsResult | null>(null)
-  const [aiError, setAiError]             = useState<string | null>(null)
+  const [aiLoading, setAiLoading]             = useState(false)
+  const [aiResult, setAiResult]               = useState<AiLevelsResult | null>(null)
+  const [aiError, setAiError]                 = useState<string | null>(null)
+  const [aiRateLimited, setAiRateLimited]     = useState(false)
+  const [aiCooldownUntil, setAiCooldownUntil] = useState(0)
+  const [aiCooldownSecs, setAiCooldownSecs]   = useState(0)
   const [portfolioSize, setPortfolioSize] = useState<number | null>(null)
   const aiPreviewLinesRef = useRef<Map<string, IPriceLine>>(new Map())
+
+  // ── AI cooldown countdown ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (aiCooldownUntil <= Date.now()) return
+    setAiCooldownSecs(Math.ceil((aiCooldownUntil - Date.now()) / 1000))
+    const id = setInterval(() => {
+      const left = Math.ceil((aiCooldownUntil - Date.now()) / 1000)
+      setAiCooldownSecs(left > 0 ? left : 0)
+      if (left <= 0) clearInterval(id)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [aiCooldownUntil])
 
   // ── Load indicators + portfolio size from localStorage ───────────────────────
   useEffect(() => {
@@ -606,16 +621,26 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
   const fetchAiLevels = useCallback(() => {
     setAiLoading(true)
     setAiError(null)
+    setAiRateLimited(false)
     setAiResult(null)
     fetch(`/api/ai-levels/${encodeURIComponent(ticker)}`)
-      .then(r => r.json())
-      .then((d: AiLevelsResult & { error?: string }) => {
+      .then(async (r) => {
+        const d: AiLevelsResult & { error?: string; rateLimited?: boolean } = await r.json()
+        if (r.status === 429 || d.rateLimited) {
+          setAiRateLimited(true)
+          setAiError(d.error ?? 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.')
+          return
+        }
         if (d.error) { setAiError(d.error); return }
         setAiResult(d)
         drawAiPreview(d)
       })
       .catch(() => setAiError('שגיאת רשת — נסה שוב'))
-      .finally(() => setAiLoading(false))
+      .finally(() => {
+        setAiLoading(false)
+        // 10-second cooldown after every call (success or failure)
+        setAiCooldownUntil(Date.now() + 10_000)
+      })
   }, [ticker, drawAiPreview])
 
   const applyAiLevels = useCallback((result: AiLevelsResult) => {
@@ -739,14 +764,16 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
           {/* AI recommendation button */}
           <button
             onClick={fetchAiLevels}
-            disabled={aiLoading}
-            title="קבל המלצת רמות מ-AI"
+            disabled={aiLoading || aiCooldownSecs > 0}
+            title={aiCooldownSecs > 0 ? `המתן ${aiCooldownSecs} שניות לפני בקשה חדשה` : 'קבל המלצת רמות מ-AI'}
             className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border transition-all disabled:opacity-50"
             style={{ borderColor: '#6366f1', color: '#6366f1', background: aiResult ? 'rgba(99,102,241,0.15)' : 'transparent' }}>
             {aiLoading
               ? <Loader2 className="h-3 w-3 animate-spin" />
               : <Bot className="h-3 w-3" />}
-            <span>המלצת AI</span>
+            <span>
+              {aiLoading ? 'מחשב...' : aiCooldownSecs > 0 ? `${aiCooldownSecs}ש׳` : 'המלצת AI'}
+            </span>
           </button>
         </div>
       </div>
@@ -767,9 +794,14 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       {/* ── AI error banner ────────────────────────────────────────────────── */}
       {aiError && (
         <div className="flex items-center justify-between px-3 py-2 text-xs border-b"
-          style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
-          <span>⚠ {aiError}</span>
-          <button onClick={() => setAiError(null)} className="hover:text-red-300"><X className="h-3.5 w-3.5" /></button>
+          style={aiRateLimited
+            ? { background: 'rgba(234,179,8,0.08)', borderColor: 'rgba(234,179,8,0.2)', color: '#eab308' }
+            : { background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+          <span>{aiRateLimited ? '⏳' : '⚠'} {aiError}</span>
+          <button onClick={() => { setAiError(null); setAiRateLimited(false) }}
+            className={aiRateLimited ? 'hover:text-yellow-300' : 'hover:text-red-300'}>
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
