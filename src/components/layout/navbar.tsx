@@ -131,6 +131,7 @@ export default function Navbar({ user }: NavbarProps) {
       style={{
         background: 'var(--iq-surface)',
         borderBottom: '1px solid var(--iq-border)',
+        paddingTop: 'env(safe-area-inset-top)',
       }}
     >
       <nav className="flex items-center justify-between max-w-7xl mx-auto h-14 gap-4">
