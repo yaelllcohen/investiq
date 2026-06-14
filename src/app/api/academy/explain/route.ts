@@ -2,16 +2,21 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { gemini, GEMINI_MODEL } from '@/lib/gemini'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { z } from 'zod'
+import { validationError } from '@/lib/schemas'
+
+const explainSchema = z.object({
+  lessonTitle: z.string().max(200).optional().default(''),
+  items: z.array(z.object({
+    question:    z.string().max(500),
+    options:     z.array(z.string().max(200)).max(6),
+    selectedIdx: z.number().int().min(0).max(10),
+    correctIdx:  z.number().int().min(0).max(10),
+  })).max(20).optional().default([]),
+})
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
-
-interface ExplainItem {
-  question: string
-  options: string[]
-  selectedIdx: number
-  correctIdx: number
-}
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -20,8 +25,13 @@ export async function POST(req: Request) {
   const rl = await rateLimit(session.user.id, 'ai')
   if (!rl.success) return rateLimitResponse(rl.reset)
 
-  const body = await req.json() as { lessonTitle?: string; items?: ExplainItem[] }
-  const { lessonTitle = '', items = [] } = body
+  let rawBody: unknown
+  try { rawBody = await req.json() } catch {
+    return NextResponse.json({ error: 'גוף הבקשה אינו JSON תקין' }, { status: 400 })
+  }
+  const expParsed = explainSchema.safeParse(rawBody)
+  if (!expParsed.success) return NextResponse.json(validationError(expParsed.error), { status: 400 })
+  const { lessonTitle, items } = expParsed.data
 
   if (!items.length) return NextResponse.json({ explanations: [] })
 

@@ -4,6 +4,17 @@ import { prisma } from '@/lib/prisma'
 import { yahooFinance } from '@/lib/yahoo-finance'
 import { gemini, GEMINI_MODEL } from '@/lib/gemini'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { z } from 'zod'
+import { validationError } from '@/lib/schemas'
+
+const vpTradeSchema = z.union([
+  z.object({ action: z.literal('reset') }),
+  z.object({
+    action: z.enum(['buy', 'sell']),
+    symbol: z.string().min(1).max(20).trim(),
+    quantity: z.number().positive().max(1_000_000),
+  }),
+])
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 45
@@ -126,11 +137,16 @@ export async function POST(req: Request) {
   const rl = await rateLimit(userId, 'ai')
   if (!rl.success) return rateLimitResponse(rl.reset)
 
-  const body = await req.json() as { action?: string; symbol?: string; quantity?: number }
-  const { action, symbol, quantity } = body
+  let rawBody: unknown
+  try { rawBody = await req.json() } catch {
+    return NextResponse.json({ error: 'גוף הבקשה אינו JSON תקין' }, { status: 400 })
+  }
+  const vpParsed = vpTradeSchema.safeParse(rawBody)
+  if (!vpParsed.success) return NextResponse.json(validationError(vpParsed.error), { status: 400 })
+  const body = vpParsed.data
 
   // ── Reset ──────────────────────────────────────────────────────────────────
-  if (action === 'reset') {
+  if (body.action === 'reset') {
     await prisma.virtualPortfolio.upsert({
       where:  { userId },
       create: { userId, cashILS: 100000, holdings: '[]' },
@@ -139,9 +155,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message: 'התיק אופס ל-₪100,000' })
   }
 
-  if (!symbol || !quantity || quantity <= 0 || !['buy', 'sell'].includes(action ?? '')) {
-    return NextResponse.json({ error: 'פרמטרים לא תקינים' }, { status: 400 })
-  }
+  const { action, symbol, quantity } = body
 
   // ── Fetch live price ───────────────────────────────────────────────────────
   const priceData = await fetchPriceILS(symbol.toUpperCase())
@@ -192,7 +206,7 @@ export async function POST(req: Request) {
     ])
   }
 
-  const comment = await aiComment(action!, symbol.toUpperCase(), name, priceILS, quantity)
+  const comment = await aiComment(action, symbol.toUpperCase(), name, priceILS, quantity)
 
   return NextResponse.json({ success: true, priceILS, name, comment })
 }

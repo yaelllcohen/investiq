@@ -2,9 +2,20 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { gemini, GEMINI_MODEL } from '@/lib/gemini'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { z } from 'zod'
+import { validationError } from '@/lib/schemas'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 45
+
+const SIM_TYPES_ENUM = ['savings', 'crash', 'retirement', 'return_rate', 'withdrawal'] as const
+
+const wealthSimSchema = z.object({
+  question:       z.string().max(500).optional(),
+  type:           z.enum(SIM_TYPES_ENUM).optional(),
+  params:         z.record(z.string(), z.number().min(-100).max(10_000_000_000)).optional(),
+  portfolioValue: z.number().min(0).max(10_000_000_000).optional(),
+})
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -230,12 +241,13 @@ export async function POST(req: Request) {
   const rl = await rateLimit(session.user.id, 'ai')
   if (!rl.success) return rateLimitResponse(rl.reset)
 
-  const body = await req.json() as {
-    question?: string
-    type?: SimType
-    params?: Record<string, number>
-    portfolioValue?: number
+  let rawBody: unknown
+  try { rawBody = await req.json() } catch {
+    return NextResponse.json({ error: 'גוף הבקשה אינו JSON תקין' }, { status: 400 })
   }
+  const wsParsed = wealthSimSchema.safeParse(rawBody)
+  if (!wsParsed.success) return NextResponse.json(validationError(wsParsed.error), { status: 400 })
+  const body = wsParsed.data
 
   const initial = Math.max(body.portfolioValue ?? 100_000, 1000)
 
