@@ -181,6 +181,7 @@ export default function RiskProfilePage() {
         body: JSON.stringify({ score, label: meta.label, answers }),
       })
       if (!res.ok) throw new Error('Failed to save')
+      try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
       setSaved(true)
     } catch {
       setSaveError('שמירת הפרופיל נכשלה. אנא נסה שוב.')

@@ -205,6 +205,7 @@ export default function JournalPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error ?? `שגיאה ${res.status}`)
+      try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
       setShowAdd(false)
       setAddForm(defaultAdd)
       await load()
@@ -221,7 +222,10 @@ export default function JournalPage() {
     if (!window.confirm('האם למחוק את ההחלטה?')) return
     try {
       const res = await fetch(`/api/journal/${id}`, { method: 'DELETE' })
-      if (res.ok) setEntries((prev) => prev.filter((e) => e.id !== id))
+      if (res.ok) {
+        try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
+        setEntries((prev) => prev.filter((e) => e.id !== id))
+      }
     } catch { /* ignore */ }
   }
 

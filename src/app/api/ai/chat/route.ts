@@ -120,11 +120,54 @@ async function buildUserContext(userId: string, userName: string | null): Promis
     }
   }
 
+  // ── Compute personal investment score (same math as /api/investment-score) ──
+  // Diversification (20 pts)
+  const assetTypes = new Set(holdings.map(h => h.assetType))
+  const currencies = new Set(holdings.map(h => h.currency ?? 'USD'))
+  const tickerCount = holdings.length
+  const tickerPts = tickerCount >= 8 ? 8 : tickerCount >= 5 ? 6 : tickerCount >= 3 ? 4 : tickerCount >= 2 ? 2 : tickerCount === 1 ? 1 : 0
+  const typePts = assetTypes.size >= 3 ? 6 : assetTypes.size === 2 ? 3 : 0
+  const currencyPts = currencies.size >= 2 ? 6 : currencies.size === 1 ? 1 : 0
+  const divScore = Math.min(tickerPts + typePts + currencyPts, 20)
+
+  // Risk (20 pts)
+  const totalCost = holdings.reduce((s, h) => s + h.avgPrice * h.quantity, 0)
+  const maxWeight = holdings.reduce((mx, h) => Math.max(mx, totalCost > 0 ? (h.avgPrice * h.quantity) / totalCost : 0), 0)
+  const concPts = maxWeight > 0.5 ? 0 : maxWeight > 0.4 ? 4 : maxWeight > 0.25 ? 8 : 12
+  const etfCount = holdings.filter(h => h.assetType === 'etf').length
+  const etfRatio = holdings.length > 0 ? etfCount / holdings.length : 0
+  const etfRiskPts = etfRatio >= 0.5 ? 8 : etfRatio >= 0.25 ? 5 : etfRatio > 0 ? 3 : 0
+  const riskScore = Math.min(concPts + etfRiskPts, 20)
+
+  // Costs (20 pts)
+  const costsScore = Math.min(Math.round(3 + etfRatio * 17), 20)
+
+  // Discipline (20 pts) — journalEntries already fetched (last 20)
+  const journalCount = journalEntries.length
+  const docPts = journalCount >= 10 ? 10 : journalCount >= 5 ? 7 : journalCount >= 3 ? 5 : journalCount >= 1 ? 3 : 0
+  const plannedCount = journalEntries.filter(e => e.emotionTag === 'planned').length
+  const plannedRatio = journalCount > 0 ? plannedCount / journalCount : 0
+  const plannedPts = journalCount > 0 ? (plannedRatio >= 0.7 ? 10 : plannedRatio >= 0.5 ? 7 : plannedRatio >= 0.3 ? 4 : 1) : 0
+  const disciplineScore = Math.min(docPts + plannedPts, 20)
+
+  // Goal alignment (20 pts)
+  const activeGoals = goals.filter(g => g.status === 'active')
+  const hasProgress = activeGoals.some(g => g.targetAmount > 0 && g.currentAmount / g.targetAmount >= 0.1)
+  const goalsScore = Math.min((activeGoals.length >= 2 ? 15 : activeGoals.length === 1 ? 10 : 0) + (hasProgress ? 5 : 0), 20)
+
+  const personalTotal = divScore + riskScore + costsScore + disciplineScore + goalsScore
+
   const lines: string[] = []
   const name = userName ?? 'המשתמש'
 
   lines.push(`אתה יועץ השקעות אישי של ${name}.`)
   lines.push(`הנה המצב הנוכחי שלו/שלה:`)
+  lines.push('')
+  lines.push('⚠️ שני ציונים נפרדים ושונים במכוון קיימים למשתמש זה:')
+  lines.push('- "ציון תיק" — מודד את איכות האחזקות עצמן (ממוצע ציוני AI של כל נייר ערך)')
+  lines.push('- "ציון השקעה אישי" — מודד את התנהלות המשקיע: פיזור, סיכון, עלויות, משמעת, התאמה למטרות')
+  lines.push('אל תבלבל ביניהם. כשנשאל על "הציון", הבן לפי ההקשר — או הצג את שניהם והסבר את ההבדל.')
+  lines.push('')
   lines.push('')
 
   // ── Portfolio ───────────────────────────────────────────────────────────────
@@ -266,6 +309,16 @@ async function buildUserContext(userId: string, userName: string | null): Promis
 
   lines.push('')
 
+  // ── Personal investment score (5 components, computed from DB data) ─────────
+  lines.push('ציון השקעה אישי (מודד התנהלות המשקיע — 5 רכיבים, כל אחד מתוך 20):')
+  lines.push(`  סה"כ: ${personalTotal}/100`)
+  lines.push(`  • פיזור: ${divScore}/20 — ${tickerCount} ני"ע, ${assetTypes.size} סוגי נכס, ${currencies.size} מטבעות`)
+  lines.push(`  • סיכון: ${riskScore}/20 — ריכוז מקסימלי ${Math.round(maxWeight * 100)}%, ${etfCount} ETF`)
+  lines.push(`  • עלויות: ${costsScore}/20 — ${etfCount > 0 ? `${etfCount} ETF (דמי ניהול נמוכים)` : 'אין ETF'}`)
+  lines.push(`  • משמעת: ${disciplineScore}/20 — ${journalCount} רשומות יומן, ${Math.round(plannedRatio * 100)}% מתוכננות`)
+  lines.push(`  • התאמה למטרות: ${goalsScore}/20 — ${activeGoals.length} מטרות פעילות${hasProgress ? ', יש התקדמות' : ''}`)
+  lines.push('')
+
   // ── Simulator ────────────────────────────────────────────────────────────────
   if (simulator) {
     const plUSD = simulator.balance - 10000
@@ -287,6 +340,7 @@ async function buildUserContext(userId: string, userName: string | null): Promis
   lines.push('- "מה הטעות הכי גדולה שלי?" — הפנה לדפוסי המסחר מהיומן.')
   lines.push('- "האם אני בדרך?" — השווה קצב צמיחה לעומת הסתברות הצלחת המטרות.')
   lines.push('- אל תציג את כל הנתונים בבת אחת — השתמש בהם רק כשרלוונטי.')
+  lines.push('- שני הציונים נפרדים ומכוונים: "ציון תיק" ≠ "ציון השקעה אישי". אל תבלבל ביניהם ואל תניח שהמשתמש טעה כשמזכיר ציון.')
 
   return lines.join('\n')
 }

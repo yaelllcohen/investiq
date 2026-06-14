@@ -253,6 +253,7 @@ export default function GoalsPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error ?? `שגיאה ${res.status}`)
+      try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
       setShowAdd(false)
       setEditTarget(null)
       setForm(defaultForm)
@@ -267,7 +268,10 @@ export default function GoalsPage() {
   async function handleDelete(id: string) {
     if (!window.confirm('למחוק את המטרה?')) return
     const res = await fetch(`/api/goals/${id}`, { method: 'DELETE' })
-    if (res.ok) setGoals((g) => g.filter((x) => x.id !== id))
+    if (res.ok) {
+      try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
+      setGoals((g) => g.filter((x) => x.id !== id))
+    }
   }
 
   async function handleUpdateAmount(e: React.FormEvent) {
@@ -284,6 +288,7 @@ export default function GoalsPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error ?? `שגיאה ${res.status}`)
+      try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
       setGoals((gs) => gs.map((g) => g.id === updateTarget.id ? { ...g, currentAmount: newAmount } : g))
       setUpdateTarget(null)
       setUpdateAmt('')
@@ -300,7 +305,10 @@ export default function GoalsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'completed' }),
     })
-    if (res.ok) setGoals((gs) => gs.map((g) => g.id === id ? { ...g, status: 'completed' } : g))
+    if (res.ok) {
+      try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
+      setGoals((gs) => gs.map((g) => g.id === id ? { ...g, status: 'completed' } : g))
+    }
   }
 
   const active    = goals.filter((g) => g.status === 'active')

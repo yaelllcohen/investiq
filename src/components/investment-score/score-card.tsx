@@ -59,10 +59,29 @@ export default function InvestmentScoreCard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    try {
+      const cached = localStorage.getItem('iv_investment_score')
+      const isStale = localStorage.getItem('iv_investment_score_stale') === '1'
+      if (cached && !isStale) {
+        const parsed: InvestmentScoreData = JSON.parse(cached)
+        if (parsed && typeof parsed.total === 'number') {
+          setData(parsed)
+          setLoading(false)
+          return
+        }
+      }
+    } catch { /* ignore localStorage errors */ }
+
     fetch('/api/investment-score')
       .then((r) => r.json())
-      .then((d) => {
-        if (d && typeof d.total === 'number') setData(d)
+      .then((d: InvestmentScoreData) => {
+        if (d && typeof d.total === 'number') {
+          setData(d)
+          try {
+            localStorage.setItem('iv_investment_score', JSON.stringify(d))
+            localStorage.removeItem('iv_investment_score_stale')
+          } catch { /* ignore */ }
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false))

@@ -305,6 +305,10 @@ export default function PortfolioPage() {
     })
   }
 
+  function markInvestmentScoreStale() {
+    try { localStorage.setItem('iv_investment_score_stale', '1') } catch {}
+  }
+
   // ── Add holding ───────────────────────────────────────────────────────────
 
   async function handleAddHolding(e: React.FormEvent) {
@@ -336,6 +340,7 @@ export default function PortfolioPage() {
       const res  = await fetch('/api/portfolio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error ?? 'הוספת האחזקה נכשלה')
+      markInvestmentScoreStale()
       setShowAdd(false); setForm(defaultForm()); setSelectedCategory('capital'); await fetchPortfolio()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'שגיאה לא ידועה')
@@ -366,6 +371,7 @@ export default function PortfolioPage() {
 
   async function handleDelete(id: string) {
     await fetch('/api/portfolio', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => {})
+    markInvestmentScoreStale()
     await fetchPortfolio()
   }
 
@@ -382,6 +388,7 @@ export default function PortfolioPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error ?? 'העדכון נכשל')
+      markInvestmentScoreStale()
       setAddMoreTarget(null); setAddMoreQty(''); setAddMorePrice(''); await fetchPortfolio()
     } catch (e) {
       setAddMoreError(e instanceof Error ? e.message : 'שגיאה לא ידועה')
@@ -439,6 +446,7 @@ export default function PortfolioPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error ?? 'העדכון נכשל')
+      markInvestmentScoreStale()
       setEditTarget(null)
       await fetchPortfolio()
     } catch (err) {
