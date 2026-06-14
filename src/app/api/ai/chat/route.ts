@@ -98,6 +98,28 @@ async function buildUserContext(userId: string, userName: string | null): Promis
     }),
   ])
 
+  // Fetch cached AI scores for capital holdings (no Gemini calls — cache only)
+  const CAPITAL_TYPES = new Set(['stock', 'etf', 'mutual_fund', 'bond', 'crypto', 'forex'])
+  const scoredTickers = [...new Set(
+    holdings.filter(h => CAPITAL_TYPES.has(h.assetType)).map(h => h.ticker)
+  )]
+  const aiScoreMap: Record<string, number | null> = {}
+  if (scoredTickers.length > 0) {
+    const aiRows = await prisma.aiScore.findMany({
+      where: { symbol: { in: scoredTickers } },
+      select: { symbol: true, scoreJson: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    for (const t of scoredTickers) aiScoreMap[t] = null
+    for (const row of aiRows) {
+      if (aiScoreMap[row.symbol] !== null) continue
+      try {
+        const p = JSON.parse(row.scoreJson)
+        if (typeof p.total === 'number') aiScoreMap[row.symbol] = p.total
+      } catch { /* skip malformed */ }
+    }
+  }
+
   const lines: string[] = []
   const name = userName ?? 'המשתמש'
 
@@ -142,6 +164,25 @@ async function buildUserContext(userId: string, userName: string | null): Promis
   }
 
   lines.push('')
+
+  // ── AI Scores (from cache — no Gemini calls) ─────────────────────────────────
+  const holdingsWithScore = holdings.filter(h => aiScoreMap[h.ticker] != null)
+  if (holdingsWithScore.length > 0) {
+    const scoreLabel = (s: number) => s >= 75 ? 'חזק' : s >= 60 ? 'חיובי' : s >= 40 ? 'נייטרלי' : 'חלש'
+    lines.push(`ציוני AI לאחזקות (0–100, מ-cache):`)
+    for (const h of holdingsWithScore) {
+      const sc = aiScoreMap[h.ticker]!
+      lines.push(`  • ${h.ticker}: ${sc} — ${scoreLabel(sc)}`)
+    }
+    const totalCost = holdingsWithScore.reduce((s, h) => s + h.avgPrice * h.quantity, 0)
+    if (totalCost > 0) {
+      const weighted = holdingsWithScore.reduce((s, h) => s + aiScoreMap[h.ticker]! * h.avgPrice * h.quantity, 0)
+      const portScore = Math.round(weighted / totalCost)
+      const portLabel = portScore >= 85 ? 'מצוין' : portScore >= 70 ? 'טוב' : portScore >= 55 ? 'בינוני' : 'בסיכון'
+      lines.push(`  ציון תיק ממוצע משוקלל: ${portScore}/100 (${portLabel}) — מבוסס על ${holdingsWithScore.length}/${holdings.length} אחזקות`)
+    }
+    lines.push('')
+  }
 
   // ── Goals ───────────────────────────────────────────────────────────────────
   if (goals.length === 0) {

@@ -190,6 +190,11 @@ export default function PortfolioPage() {
   const [addMoreSubmitting, setAddMoreSubmitting] = useState(false)
   const [addMoreError, setAddMoreError]       = useState<string | null>(null)
 
+  const [editTarget, setEditTarget]           = useState<Holding | null>(null)
+  const [editForm, setEditForm]               = useState<FormState>(defaultForm())
+  const [editSubmitting, setEditSubmitting]   = useState(false)
+  const [editError, setEditError]             = useState<string | null>(null)
+
   // Sector breakdown (fetched lazily after holdings load)
   const [sectorData, setSectorData]   = useState<{ name: string; value: number; percentage: number }[] | null>(null)
   const [sectorLoading, setSectorLoading] = useState(false)
@@ -381,6 +386,64 @@ export default function PortfolioPage() {
     } catch (e) {
       setAddMoreError(e instanceof Error ? e.message : 'שגיאה לא ידועה')
     } finally { setAddMoreSubmitting(false) }
+  }
+
+  // ── Edit holding ─────────────────────────────────────────────────────────
+
+  function handleEditOpen(h: Holding) {
+    setEditTarget(h)
+    setEditError(null)
+    setEditForm({
+      assetType:        h.assetType,
+      name:             h.name,
+      currency:         h.currency,
+      purchaseDate:     h.purchaseDate ? h.purchaseDate.split('T')[0] : today(),
+      ticker:           h.ticker,
+      quantity:         String(h.quantity),
+      avgPrice:         String(h.avgPrice),
+      managingBody:     h.managingBody ?? '',
+      accountNumber:    h.accountNumber ?? '',
+      track:            h.track ?? '',
+      monthlyDeposit:   h.monthlyDeposit != null ? String(h.monthlyDeposit) : '',
+      depositFrequency: h.depositFrequency ?? 'monthly',
+      interestRate:     h.interestRate  != null ? String(h.interestRate)  : '',
+      maturityDate:     h.maturityDate  ? new Date(h.maturityDate).toISOString().split('T')[0] : '',
+    })
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editTarget) return
+    setEditSubmitting(true)
+    setEditError(null)
+    try {
+      const body: Record<string, unknown> = {
+        name:        editForm.name,
+        quantity:    parseFloat(editForm.quantity),
+        avgPrice:    parseFloat(editForm.avgPrice),
+        assetType:   editForm.assetType,
+        currency:    editForm.currency,
+        purchaseDate: new Date(editForm.purchaseDate).toISOString(),
+      }
+      if (editForm.managingBody)   body.managingBody   = editForm.managingBody
+      if (editForm.accountNumber)  body.accountNumber  = editForm.accountNumber
+      if (editForm.track)          body.track          = editForm.track
+      if (editForm.monthlyDeposit) body.monthlyDeposit = parseFloat(editForm.monthlyDeposit)
+      if (editForm.depositFrequency) body.depositFrequency = editForm.depositFrequency
+      if (editForm.interestRate)   body.interestRate   = parseFloat(editForm.interestRate)
+      if (editForm.maturityDate)   body.maturityDate   = editForm.maturityDate
+
+      const res  = await fetch(`/api/portfolio/${editTarget.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error ?? 'העדכון נכשל')
+      setEditTarget(null)
+      await fetchPortfolio()
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'שגיאה לא ידועה')
+    } finally { setEditSubmitting(false) }
   }
 
   // ── Derived data (ALL hooks before any early return) ─────────────────────
@@ -595,6 +658,7 @@ export default function PortfolioPage() {
                   saveManualPrice={saveManualPrice} clearManualPrice={clearManualPrice}
                   openAddMore={h => { setAddMoreTarget(h); setAddMoreQty(''); setAddMorePrice(''); setAddMoreError(null) }}
                   onDelete={handleDelete}
+                  onEdit={handleEditOpen}
                   aiScores={aiScores}
                   onRowClick={ticker => router.push(`/stock/${encodeURIComponent(ticker)}`)} />
               )}
@@ -609,14 +673,16 @@ export default function PortfolioPage() {
                         editPriceId={editPriceId} editPriceValue={editPriceValue}
                         setEditPriceId={setEditPriceId} setEditPriceValue={setEditPriceValue}
                         saveManualPrice={saveManualPrice} clearManualPrice={clearManualPrice}
-                        onDelete={handleDelete} />
+                        onDelete={handleDelete}
+                        onEdit={handleEditOpen} />
                     )}
                     {deposits.length > 0 && (
                       <SimpleTable holdings={deposits}
                         editPriceId={editPriceId} editPriceValue={editPriceValue}
                         setEditPriceId={setEditPriceId} setEditPriceValue={setEditPriceValue}
                         saveManualPrice={saveManualPrice} clearManualPrice={clearManualPrice}
-                        onDelete={handleDelete} />
+                        onDelete={handleDelete}
+                        onEdit={handleEditOpen} />
                     )}
                   </div>
                 )
@@ -627,7 +693,8 @@ export default function PortfolioPage() {
                   editPriceId={editPriceId} editPriceValue={editPriceValue}
                   setEditPriceId={setEditPriceId} setEditPriceValue={setEditPriceValue}
                   saveManualPrice={saveManualPrice} clearManualPrice={clearManualPrice}
-                  onDelete={handleDelete} />
+                  onDelete={handleDelete}
+                  onEdit={handleEditOpen} />
               )}
             </section>
           )
@@ -799,6 +866,118 @@ export default function PortfolioPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Holding Dialog ───────────────────────────────────────────────── */}
+      <Dialog open={!!editTarget} onOpenChange={o => { if (!o) { setEditTarget(null); setEditError(null) } }}>
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-zinc-100 max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-zinc-100 font-mono text-base">ערוך אחזקה — {editTarget?.ticker}</DialogTitle>
+          </DialogHeader>
+          {editTarget && (
+            <form onSubmit={handleEditSave} className="space-y-4 mt-1">
+              <div className="space-y-1.5">
+                <Label className="text-zinc-400 text-xs">שם</Label>
+                <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  required className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 h-8 text-xs" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-zinc-400 text-xs">כמות</Label>
+                  <Input type="number" min="0.000001" step="any" value={editForm.quantity}
+                    onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))}
+                    required className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-zinc-400 text-xs">מחיר ממוצע / עלות ({sym(editForm.currency)})</Label>
+                  <Input type="number" min="0" step="any" value={editForm.avgPrice}
+                    onChange={e => setEditForm(f => ({ ...f, avgPrice: e.target.value }))}
+                    required className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-zinc-400 text-xs">מטבע</Label>
+                  <Select value={editForm.currency} onValueChange={c => setEditForm(f => ({ ...f, currency: c }))}>
+                    <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map(c => <SelectItem key={c} value={c} className="text-xs">{CURRENCY_LABELS[c]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-zinc-400 text-xs">תאריך רכישה</Label>
+                  <Input type="date" value={editForm.purchaseDate}
+                    onChange={e => setEditForm(f => ({ ...f, purchaseDate: e.target.value }))}
+                    className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                </div>
+              </div>
+              {/* Long-term savings extra fields */}
+              {['gemel','hishtalmut','pension'].includes(editForm.assetType) && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-zinc-400 text-xs">גוף מנהל</Label>
+                      <Input value={editForm.managingBody}
+                        onChange={e => setEditForm(f => ({ ...f, managingBody: e.target.value }))}
+                        className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-zinc-400 text-xs">מסלול</Label>
+                      <Input value={editForm.track}
+                        onChange={e => setEditForm(f => ({ ...f, track: e.target.value }))}
+                        className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-zinc-400 text-xs">הפקדה חודשית (₪)</Label>
+                      <Input type="number" min="0" step="any" value={editForm.monthlyDeposit}
+                        onChange={e => setEditForm(f => ({ ...f, monthlyDeposit: e.target.value }))}
+                        className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-zinc-400 text-xs">תדירות</Label>
+                      <Select value={editForm.depositFrequency} onValueChange={v => setEditForm(f => ({ ...f, depositFrequency: v }))}>
+                        <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(DEPOSIT_FREQ_LABELS).map(([k, v]) => (
+                            <SelectItem key={k} value={k} className="text-xs">{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* Deposit extra fields */}
+              {editForm.assetType === 'deposit' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-zinc-400 text-xs">ריבית (%)</Label>
+                    <Input type="number" min="0" step="0.01" max="100" value={editForm.interestRate}
+                      onChange={e => setEditForm(f => ({ ...f, interestRate: e.target.value }))}
+                      className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-zinc-400 text-xs">תאריך פדיון</Label>
+                    <Input type="date" value={editForm.maturityDate}
+                      onChange={e => setEditForm(f => ({ ...f, maturityDate: e.target.value }))}
+                      className="bg-zinc-800 border-zinc-700 text-zinc-100 h-8 text-xs" />
+                  </div>
+                </div>
+              )}
+              {editError && <p className="text-xs text-red-400 bg-red-950/40 border border-red-800/50 rounded px-3 py-2">{editError}</p>}
+              <DialogFooter className="pt-1">
+                <Button type="button" variant="outline" onClick={() => { setEditTarget(null); setEditError(null) }}
+                  className="border-zinc-700 text-zinc-400 hover:text-zinc-100 text-xs h-8">ביטול</Button>
+                <Button type="submit" disabled={editSubmitting} className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-8">
+                  {editSubmitting ? 'שומר...' : 'שמור שינויים'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1216,6 +1395,7 @@ interface TableCommonProps {
   saveManualPrice: (id: string) => void
   clearManualPrice: (id: string) => void
   onDelete: (id: string) => void
+  onEdit: (h: Holding) => void
 }
 
 const NON_NAVIGABLE_TYPES = new Set(['cash', 'deposit', 'real_estate', 'gemel', 'hishtalmut', 'pension', 'gold', 'p2p', 'other'])
@@ -1226,7 +1406,7 @@ function isMoneyMarketFund(h: { assetType: string; name: string }): boolean {
   return lower.includes('כספי') || lower.includes('money market')
 }
 
-function CapitalTable({ holdings, editPriceId, editPriceValue, setEditPriceId, setEditPriceValue, saveManualPrice, clearManualPrice, onDelete, openAddMore, aiScores, onRowClick }: TableCommonProps & { openAddMore: (h: Holding) => void; aiScores?: Record<string, number | null>; onRowClick?: (ticker: string) => void }) {
+function CapitalTable({ holdings, editPriceId, editPriceValue, setEditPriceId, setEditPriceValue, saveManualPrice, clearManualPrice, onDelete, onEdit, openAddMore, aiScores, onRowClick }: TableCommonProps & { openAddMore: (h: Holding) => void; aiScores?: Record<string, number | null>; onRowClick?: (ticker: string) => void }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
 
@@ -1297,6 +1477,10 @@ function CapitalTable({ holdings, editPriceId, editPriceValue, setEditPriceId, s
                   <button onClick={e => { e.stopPropagation(); openAddMore(h) }}
                     className="text-zinc-600 hover:text-blue-400 transition-colors" title="הוסף עוד">
                     <PlusCircle className="h-4 w-4" />
+                  </button>
+                  <button onClick={e => { e.stopPropagation(); onEdit(h) }}
+                    className="text-zinc-600 hover:text-amber-400 transition-colors" title="ערוך">
+                    <Pencil className="h-4 w-4" />
                   </button>
                   <button onClick={e => { e.stopPropagation(); onDelete(h.id) }}
                     className="text-zinc-600 hover:text-red-400 transition-colors" title="מחק">
@@ -1388,6 +1572,7 @@ function CapitalTable({ holdings, editPriceId, editPriceValue, setEditPriceId, s
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">
                       <button onClick={() => openAddMore(h)} className="text-zinc-600 hover:text-blue-400 transition-colors" title="הוסף עוד"><PlusCircle className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => onEdit(h)} className="text-zinc-600 hover:text-amber-400 transition-colors" title="ערוך"><Pencil className="h-3.5 w-3.5" /></button>
                       <button onClick={() => onDelete(h.id)} className="text-zinc-600 hover:text-red-400 transition-colors" title="מחק"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </td>
@@ -1403,7 +1588,7 @@ function CapitalTable({ holdings, editPriceId, editPriceValue, setEditPriceId, s
 
 // ─── Long-term Savings Table ─────────────────────────────────────────────────
 
-function LongtermTable({ holdings, editPriceId, editPriceValue, setEditPriceId, setEditPriceValue, saveManualPrice, clearManualPrice, onDelete }: TableCommonProps) {
+function LongtermTable({ holdings, editPriceId, editPriceValue, setEditPriceId, setEditPriceValue, saveManualPrice, clearManualPrice, onDelete, onEdit }: TableCommonProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -1459,7 +1644,10 @@ function LongtermTable({ holdings, editPriceId, editPriceValue, setEditPriceId, 
                   {h.monthlyDeposit ? `${formatCurrency(h.monthlyDeposit, 'ILS')} / ${DEPOSIT_FREQ_LABELS[h.depositFrequency ?? 'monthly'] ?? h.depositFrequency}` : '—'}
                 </td>
                 <td className="px-3 py-3">
-                  <button type="button" onClick={() => onDelete(h.id)} className="text-zinc-600 hover:text-red-400 transition-colors" title="מחק"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => onEdit(h)} className="text-zinc-600 hover:text-amber-400 transition-colors" title="ערוך"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => onDelete(h.id)} className="text-zinc-600 hover:text-red-400 transition-colors" title="מחק"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1472,7 +1660,7 @@ function LongtermTable({ holdings, editPriceId, editPriceValue, setEditPriceId, 
 
 // ─── Simple Table (real estate / alternative) ─────────────────────────────────
 
-function SimpleTable({ holdings, editPriceId, editPriceValue, setEditPriceId, setEditPriceValue, saveManualPrice, clearManualPrice, onDelete }: TableCommonProps) {
+function SimpleTable({ holdings, editPriceId, editPriceValue, setEditPriceId, setEditPriceValue, saveManualPrice, clearManualPrice, onDelete, onEdit }: TableCommonProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -1507,7 +1695,10 @@ function SimpleTable({ holdings, editPriceId, editPriceValue, setEditPriceId, se
                   {h.managingBody && <span>{h.managingBody}</span>}
                 </td>
                 <td className="px-3 py-3">
-                  <button onClick={() => onDelete(h.id)} className="text-zinc-600 hover:text-red-400 transition-colors" title="מחק"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => onEdit(h)} className="text-zinc-600 hover:text-amber-400 transition-colors" title="ערוך"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => onDelete(h.id)} className="text-zinc-600 hover:text-red-400 transition-colors" title="מחק"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
                 </td>
               </tr>
             ))}

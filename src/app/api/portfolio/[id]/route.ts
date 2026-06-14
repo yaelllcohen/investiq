@@ -52,6 +52,22 @@ const manualPriceSchema = z.object({
   manualPrice: z.number().positive().max(10_000_000_000).nullable(),
 })
 
+const fullEditSchema = z.object({
+  name:             z.string().min(1).max(200),
+  quantity:         z.number().positive().max(1_000_000),
+  avgPrice:         z.number().min(0).max(10_000_000_000),
+  assetType:        z.string().max(50),
+  currency:         z.enum(['USD', 'ILS', 'EUR', 'GBP']),
+  purchaseDate:     z.string().optional(),
+  managingBody:     z.string().max(200).optional().nullable(),
+  accountNumber:    z.string().max(100).optional().nullable(),
+  track:            z.string().max(200).optional().nullable(),
+  monthlyDeposit:   z.number().min(0).max(10_000_000_000).optional().nullable(),
+  depositFrequency: z.enum(['monthly', 'quarterly', 'yearly']).optional().nullable(),
+  interestRate:     z.number().min(0).max(100).optional().nullable(),
+  maturityDate:     z.string().optional().nullable(),
+})
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -69,16 +85,41 @@ export async function PATCH(
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'גוף הבקשה אינו JSON תקין' }, { status: 400 }) }
 
-  const parsed = manualPriceSchema.safeParse(body)
-  if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 })
-
   const holding = await prisma.holding.findFirst({ where: { id, userId } })
   if (!holding) return NextResponse.json({ error: 'אחזקה לא נמצאה' }, { status: 404 })
 
+  // Manual price update (body always contains the 'manualPrice' key, even when null)
+  if ('manualPrice' in (body as Record<string, unknown>)) {
+    const parsed = manualPriceSchema.safeParse(body)
+    if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 })
+    const updated = await prisma.holding.update({
+      where: { id },
+      data:  { manualPrice: parsed.data.manualPrice },
+    })
+    return NextResponse.json(updated)
+  }
+
+  // Full holding edit
+  const parsed = fullEditSchema.safeParse(body)
+  if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 })
+  const d = parsed.data
   const updated = await prisma.holding.update({
     where: { id },
-    data:  { manualPrice: parsed.data.manualPrice },
+    data: {
+      name:             d.name,
+      quantity:         d.quantity,
+      avgPrice:         d.avgPrice,
+      assetType:        d.assetType,
+      currency:         d.currency,
+      ...(d.purchaseDate ? { purchaseDate: new Date(d.purchaseDate) } : {}),
+      managingBody:     d.managingBody  ?? null,
+      accountNumber:    d.accountNumber ?? null,
+      track:            d.track         ?? null,
+      monthlyDeposit:   d.monthlyDeposit   ?? null,
+      depositFrequency: d.depositFrequency ?? null,
+      interestRate:     d.interestRate  ?? null,
+      maturityDate:     d.maturityDate ? new Date(d.maturityDate) : null,
+    },
   })
-
   return NextResponse.json(updated)
 }
