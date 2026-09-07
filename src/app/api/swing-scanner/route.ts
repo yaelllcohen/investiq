@@ -8,9 +8,34 @@ import { SWING_SCAN_UNIVERSE } from '@/lib/swing-universe'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 180
 
-const CACHE_TTL = 25 * 60 * 1000 // 25 minutes
+const IL_TZ = 'Asia/Jerusalem'
 const QUOTE_CHUNK_SIZE = 40
-const RSI_BATCH_SIZE = 20
+const EXTRAS_BATCH_SIZE = 15
+
+// ── Trading-day cache validity (Israeli business week: Sun–Thu trading, Fri–Sat weekend) ──
+function ilDateParts(d: Date): { dateStr: string; weekday: number } {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: IL_TZ, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  })
+  const parts = fmt.formatToParts(d)
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  return { dateStr: `${get('year')}-${get('month')}-${get('day')}`, weekday: weekdayMap[get('weekday')] ?? 0 }
+}
+
+// Cache is valid for the rest of the calendar day it was generated on. On
+// Saturday (the Israeli weekend, after Friday's close), Friday's scan is
+// still shown rather than forcing a scan on a non-trading day.
+function isCacheValidForTradingDay(cachedAt: Date, now: Date): boolean {
+  const cached = ilDateParts(cachedAt)
+  const current = ilDateParts(now)
+  if (cached.dateStr === current.dateStr) return true
+  if (current.weekday === 6) {
+    const yesterday = ilDateParts(new Date(now.getTime() - 24 * 3600 * 1000))
+    return cached.dateStr === yesterday.dateStr
+  }
+  return false
+}
 
 // Raw per-ticker metrics — no filtering applied server-side. The client applies
 // the (dynamically adjustable) Finviz-style filters against this cached dataset.
@@ -19,10 +44,13 @@ interface ScanRow {
   isIsraeli: boolean
   price: number
   changePercent: number
+  gapPercent: number | null
   marketCap: number | null
   volume: number
   sma200: number | null
   rsi: number | null
+  floatShares: number | null
+  insidersPct: number | null
 }
 
 function rsi14(closes: number[]): number | null {
@@ -66,6 +94,25 @@ async function fetchRsi(fetchSymbol: string): Promise<number | null> {
   }
 }
 
+async function fetchFloatAndInsiders(fetchSymbol: string): Promise<{ floatShares: number | null; insidersPct: number | null }> {
+  try {
+    const summary = await yahooFinance.quoteSummary(
+      fetchSymbol,
+      { modules: ['defaultKeyStatistics'] },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { validateResult: false } as any
+    )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stats = (summary as any)?.defaultKeyStatistics
+    return {
+      floatShares: typeof stats?.floatShares === 'number' ? stats.floatShares : null,
+      insidersPct: typeof stats?.heldPercentInsiders === 'number' ? stats.heldPercentInsiders * 100 : null,
+    }
+  } catch {
+    return { floatShares: null, insidersPct: null }
+  }
+}
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -82,13 +129,13 @@ export async function GET(req: Request) {
       const cached = await prisma.aiScore.findUnique({
         where: { symbol_type: { symbol: 'SWING_SCAN', type: 'universe_scan' } },
       })
-      if (cached && Date.now() - cached.createdAt.getTime() < CACHE_TTL) {
+      if (cached && isCacheValidForTradingDay(cached.createdAt, new Date())) {
         return NextResponse.json({ ...JSON.parse(cached.scoreJson), cached: true })
       }
     } catch { /* re-compute on cache miss */ }
   }
 
-  // ── Stage 1: batched quote() calls for price / change% / marketCap / volume / SMA200 ──
+  // ── Stage 1: batched quote() calls for price / change% / gap% / marketCap / volume / SMA200 ──
   const bySymbol = new Map<string, { isIsraeli: boolean }>()
   for (const e of SWING_SCAN_UNIVERSE) bySymbol.set(e.fetchSymbol, { isIsraeli: e.isIsraeli })
 
@@ -97,7 +144,10 @@ export async function GET(req: Request) {
     quoteChunks.map(syms => yahooFinance.quote(syms, {}, { validateResult: false }))
   )
 
-  const coarse = new Map<string, { price: number; changePercent: number; marketCap: number | null; volume: number; sma200: number | null }>()
+  const coarse = new Map<string, {
+    price: number; changePercent: number; gapPercent: number | null
+    marketCap: number | null; volume: number; sma200: number | null
+  }>()
   for (const r of quoteResults) {
     if (r.status !== 'fulfilled') continue
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,9 +155,15 @@ export async function GET(req: Request) {
     for (const q of arr) {
       const price = q?.regularMarketPrice
       if (typeof price !== 'number' || !isFinite(price) || price <= 0) continue
+      const open = typeof q.regularMarketOpen === 'number' ? q.regularMarketOpen : null
+      const prevClose = typeof q.regularMarketPreviousClose === 'number' ? q.regularMarketPreviousClose : null
+      const gapPercent = (open != null && prevClose != null && prevClose > 0)
+        ? ((open - prevClose) / prevClose) * 100
+        : null
       coarse.set(q.symbol, {
         price,
         changePercent: typeof q.regularMarketChangePercent === 'number' ? q.regularMarketChangePercent : 0,
+        gapPercent,
         marketCap: typeof q.marketCap === 'number' ? q.marketCap : null,
         volume: typeof q.regularMarketVolume === 'number' ? q.regularMarketVolume : 0,
         sma200: typeof q.twoHundredDayAverage === 'number' ? q.twoHundredDayAverage : null,
@@ -115,15 +171,15 @@ export async function GET(req: Request) {
     }
   }
 
-  // ── Stage 2: per-ticker RSI (only for symbols with a valid quote) ─────────────
-  const rsiTargets = [...coarse.keys()]
-  const rsiSettled = await runBatched(rsiTargets, RSI_BATCH_SIZE, async (fetchSymbol) => ({
-    fetchSymbol,
-    rsi: await fetchRsi(fetchSymbol),
-  }))
-  const rsiMap = new Map<string, number | null>()
-  for (const r of rsiSettled) {
-    if (r.status === 'fulfilled') rsiMap.set(r.value.fetchSymbol, r.value.rsi)
+  // ── Stage 2: per-ticker RSI + float/insiders (only for symbols with a valid quote) ──
+  const targets = [...coarse.keys()]
+  const extrasSettled = await runBatched(targets, EXTRAS_BATCH_SIZE, async (fetchSymbol) => {
+    const [rsi, extras] = await Promise.all([fetchRsi(fetchSymbol), fetchFloatAndInsiders(fetchSymbol)])
+    return { fetchSymbol, rsi, ...extras }
+  })
+  const extrasMap = new Map<string, { rsi: number | null; floatShares: number | null; insidersPct: number | null }>()
+  for (const r of extrasSettled) {
+    if (r.status === 'fulfilled') extrasMap.set(r.value.fetchSymbol, r.value)
   }
 
   // ── Combine ────────────────────────────────────────────────────────────────
@@ -131,15 +187,19 @@ export async function GET(req: Request) {
   for (const [fetchSymbol, meta] of bySymbol) {
     const c = coarse.get(fetchSymbol)
     if (!c) continue
+    const extras = extrasMap.get(fetchSymbol)
     results.push({
       symbol: fetchSymbol.replace(/\.TA$/, ''),
       isIsraeli: meta.isIsraeli,
       price: c.price,
       changePercent: parseFloat(c.changePercent.toFixed(2)),
+      gapPercent: c.gapPercent != null ? parseFloat(c.gapPercent.toFixed(2)) : null,
       marketCap: c.marketCap,
       volume: c.volume,
       sma200: c.sma200,
-      rsi: rsiMap.get(fetchSymbol) != null ? parseFloat(rsiMap.get(fetchSymbol)!.toFixed(1)) : null,
+      rsi: extras?.rsi != null ? parseFloat(extras.rsi.toFixed(1)) : null,
+      floatShares: extras?.floatShares ?? null,
+      insidersPct: extras?.insidersPct != null ? parseFloat(extras.insidersPct.toFixed(1)) : null,
     })
   }
 

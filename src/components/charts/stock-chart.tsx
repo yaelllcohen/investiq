@@ -228,7 +228,6 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
   const indSeriesRef   = useRef<Map<IndicatorKey, ISeriesApi<'Line'>[]>>(new Map())
   const priceLinesRef  = useRef<Map<LevelType, IPriceLine>>(new Map())
   const levelsRef      = useRef<Record<LevelType, number | null>>({ entry: null, stop: null, target: null })
-  const activeIndRef   = useRef<Set<IndicatorKey>>(new Set())
   const placingRef     = useRef<LevelType | null>(null)
   const saveTmrRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -238,6 +237,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set())
   const [loading, setLoading]             = useState(true)
   const [chartData, setChartData]         = useState<ChartData[]>([])
+  const [indicatorData, setIndicatorData] = useState<ChartData[]>([])
   const [placingMode, setPlacingMode]     = useState<LevelType | null>(null)
   const [levels, setLevels]               = useState<Record<LevelType, number | null>>({ entry: null, stop: null, target: null })
   const [aiLoading, setAiLoading]             = useState(false)
@@ -310,9 +310,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       const saved = localStorage.getItem(IV_KEY)
       if (saved) {
         const arr = JSON.parse(saved) as IndicatorKey[]
-        const s = new Set(arr)
-        setActiveIndicators(s)
-        activeIndRef.current = s
+        setActiveIndicators(new Set(arr))
       }
     } catch { /* ignore */ }
     try {
@@ -355,6 +353,25 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       .finally(() => { if (!dead) setLoading(false) })
     return () => { dead = true }
   }, [ticker, timeRange])
+
+  // ── Fetch a fixed, long daily history for indicators (SMA/EMA/BB) ─────────────
+  // Independent of the selected time range: a "SMA 200" always means 200 DAYS,
+  // so it needs its own always-daily, always-long-enough dataset — the visible
+  // chartData (e.g. 3M of daily bars, or 5m bars for "1D") is often too short
+  // or the wrong granularity to compute it from.
+  useEffect(() => {
+    let dead = false
+    fetch(`/api/stock/${ticker}/history?range=1y&interval=1d`)
+      .then(r => r.json())
+      .then((json: unknown) => {
+        if (dead) return
+        const rows = Array.isArray(json) ? json as ChartData[]
+          : ((json as { data?: ChartData[] })?.data ?? [])
+        setIndicatorData(rows)
+      })
+      .catch(() => { if (!dead) setIndicatorData([]) })
+    return () => { dead = true }
+  }, [ticker])
 
   // ── Save level to DB (debounced) ──────────────────────────────────────────────
   const saveLevel = useCallback((type: LevelType, price: number | null) => {
@@ -442,12 +459,9 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       ms.setData(chartData.filter(d => d.close).map(d => ({ time: t(d), value: d.close })))
     }
 
-    // Indicators from ref (no rebuild dep)
-    for (const key of activeIndRef.current) {
-      if (key === 'rsi') continue
-      const series = buildIndicator(chart, key, chartData)
-      if (series.length) indSeriesRef.current.set(key, series)
-    }
+    // Indicator overlays are (re)built by a dedicated effect below, once
+    // indicatorData is available — not here, since chartData is often too
+    // short/wrong-granularity to compute e.g. a 200-day SMA from.
 
     // Re-draw existing price levels
     for (const [type, price] of Object.entries(levelsRef.current) as [LevelType, number | null][]) {
@@ -557,6 +571,26 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartData, chartType])
+
+  // ── Indicator overlays (SMA/EMA/BB) — driven by the long daily indicatorData ──
+  // Runs whenever the chart is (re)built (chartData/chartType change — old series
+  // refs are already gone in that case) or when indicatorData/activeIndicators
+  // change (new data arrived, or the user toggled a line on/off).
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    for (const ss of indSeriesRef.current.values()) {
+      for (const s of ss) { try { chart.removeSeries(s) } catch { /* ignore */ } }
+    }
+    indSeriesRef.current.clear()
+
+    if (indicatorData.length === 0) return
+    for (const key of activeIndicators) {
+      if (key === 'rsi') continue
+      const ss = buildIndicator(chart, key, indicatorData)
+      if (ss.length) indSeriesRef.current.set(key, ss)
+    }
+  }, [chartData, chartType, indicatorData, activeIndicators])
 
   // ── Volume separate chart panel ─────────────────────────────────────────────
   useEffect(() => {
@@ -682,31 +716,18 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     }
   }, [levels, syncPriceLine])
 
-  // ── Toggle indicator ──────────────────────────────────────────────────────────
+  // ── Toggle indicator ───────────────────────────────────────────────────────────
+  // Actual series add/remove is handled reactively by the indicator-overlay
+  // effect above (and the RSI effect, for 'rsi') — this just updates state.
   const toggleIndicator = useCallback((key: IndicatorKey) => {
     setActiveIndicators(prev => {
       const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-        // Remove series from chart
-        const ss = indSeriesRef.current.get(key)
-        if (ss && chartRef.current) {
-          for (const s of ss) { try { chartRef.current.removeSeries(s) } catch { /* ignore */ } }
-        }
-        indSeriesRef.current.delete(key)
-      } else {
-        next.add(key)
-        // Add series if chart & data ready (RSI handled by its own effect)
-        if (key !== 'rsi' && chartRef.current && chartData.length > 0) {
-          const ss = buildIndicator(chartRef.current, key, chartData)
-          if (ss.length) indSeriesRef.current.set(key, ss)
-        }
-      }
-      activeIndRef.current = next
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       try { localStorage.setItem(IV_KEY, JSON.stringify([...next])) } catch { /* ignore */ }
       return next
     })
-  }, [chartData])
+  }, [])
 
   // ── Remove a price level ──────────────────────────────────────────────────────
   const clearLevel = useCallback((type: LevelType) => {
