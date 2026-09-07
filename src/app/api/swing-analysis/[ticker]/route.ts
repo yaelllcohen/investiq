@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import type Anthropic from '@anthropic-ai/sdk'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { yahooFinance } from '@/lib/yahoo-finance'
-import { anthropic, ANTHROPIC_MODEL, extractJson } from '@/lib/anthropic'
+import { gemini, GEMINI_MODEL } from '@/lib/gemini'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { tickerSchema, validationError } from '@/lib/schemas'
 
@@ -139,24 +138,39 @@ INSTRUCTIONS:
 REQUIRED JSON:
 {"pattern":"bull_flag","confidence":0,"entry":0,"stop":0,"target":0,"riskReward":"1:2.0","expectedDays":0,"reasoning":"הסבר בעברית"}`
 
-  // ── Call Anthropic ─────────────────────────────────────────────────────────
+  // ── Call Gemini ───────────────────────────────────────────────────────────
   let aiData: Record<string, unknown>
   try {
-    const res = await anthropic.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
-      system: 'You are a JSON-only API. Output valid JSON and nothing else.',
-      output_config: { effort: 'medium' },
-      messages: [{ role: 'user', content: prompt }],
+    const res = await gemini.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: 'You are a JSON-only API. Output valid JSON and nothing else.',
+        maxOutputTokens: 1000,
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        thinkingConfig: { thinkingBudget: 0 } as any,
+      },
     })
-    const textBlock = res.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-    aiData = extractJson(textBlock?.text ?? '') as Record<string, unknown>
+
+    const raw = (res.text ?? '').trim()
+    const clean = raw
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
+    try {
+      aiData = JSON.parse(clean)
+    } catch {
+      const match = clean.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error('no JSON in response')
+      aiData = JSON.parse(match[0])
+    }
   } catch (err) {
     const status = (err as { status?: number }).status
-    if (status === 429) {
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+    if (status === 429 || msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
       return NextResponse.json({ error: 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.', rateLimited: true }, { status: 429 })
     }
-    console.error('[swing-analysis] Anthropic error:', err instanceof Error ? err.message : err)
+    console.error('[swing-analysis] Gemini error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'שגיאת AI — נסה שוב מאוחר יותר' }, { status: 503 })
   }
 
