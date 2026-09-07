@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { yahooFinance } from '@/lib/yahoo-finance'
 import { getBizportalPrice } from '@/lib/bizportal'
-import StockChart from '@/components/charts/stock-chart'
+import ChartTabs from '@/components/charts/chart-tabs'
 import AddToWatchlistButton from '@/components/watchlist/add-button'
 import AddToPortfolioButton from '@/components/portfolio/add-button'
 import ScoreCard from '@/components/stock/score-card'
@@ -79,7 +79,7 @@ export default async function StockPage({ params }: StockPageProps) {
 
         {/* Chart — Yahoo Finance .TA if available, otherwise placeholder */}
         {hasYahooChart ? (
-          <StockChart ticker={yahooTicker} currentPrice={displayPrice} />
+          <ChartTabs ticker={yahooTicker} currentPrice={displayPrice} exchange="TLV" quoteType="EQUITY" />
         ) : (
           <div className="rounded-xl p-5 border border-white/5 flex items-center gap-2 text-sm"
             style={{ background: '#111827', color: '#64748b' }}>
@@ -321,7 +321,7 @@ export default async function StockPage({ params }: StockPageProps) {
       </div>
 
       {/* ─── Chart ─── */}
-      <StockChart ticker={symbol} currentPrice={price} />
+      <ChartTabs ticker={symbol} currentPrice={price} exchange={q.exchange} quoteType={qType} />
 
       {/* ─── AI Score ─── */}
       <ScoreCard symbol={symbol} />

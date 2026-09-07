@@ -14,11 +14,12 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://s3.tradingview.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https: blob:",
       "font-src 'self' data:",
       "connect-src 'self' https://api.anthropic.com wss: ws:",
+      "frame-src 'self' https://s.tradingview.com https://www.tradingview.com",
       "frame-ancestors 'none'",
     ].join('; '),
   },
