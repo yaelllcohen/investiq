@@ -60,9 +60,15 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
           allow_symbol_change: true,
           studies: [
             'Volume@tv-basicstudies',
-            'MASimple@tv-basicstudies|{"length":200,"plotType":"line","color":"#3b82f6"}',
-            'MAExp@tv-basicstudies|{"length":8,"plotType":"line","color":"#f97316"}',
+            'MASimple@tv-basicstudies',
+            'MAExp@tv-basicstudies',
           ],
+          studies_overrides: {
+            'moving average.length': 200,
+            'moving average.plot.color': '#3b82f6',
+            'moving average exponential.length': 8,
+            'moving average exponential.plot.color': '#f97316',
+          },
         })
         setLoading(false)
       })
@@ -88,7 +94,7 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
     <div
       ref={wrapperRef}
       className="rounded-xl overflow-hidden border border-white/5 relative"
-      style={{ background: '#111827', height: isFullscreen ? '100vh' : 500 }}
+      style={{ background: '#111827', height: isFullscreen ? '100vh' : 600 }}
     >
       <button
         onClick={toggleFullscreen}

@@ -54,7 +54,7 @@ const LEVEL_CFG: Record<LevelType, { color: string; label: string; icon: string 
 }
 
 const IV_KEY = 'iv_indicators_v2'
-const MAIN_H = 420
+const MAIN_H = 600
 const RSI_H  = 110
 const VOL_H  = 90
 
@@ -438,7 +438,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
       crosshair: { vertLine: { color: '#334155' }, horzLine: { color: '#334155' } },
       rightPriceScale: { borderColor: '#1e293b' },
-      timeScale: { borderColor: '#1e293b', timeVisible: true, secondsVisible: false },
+      timeScale: { borderColor: '#1e293b', timeVisible: true, secondsVisible: false, barSpacing: 12, minBarSpacing: 8 },
     })
     chartRef.current = chart
 
@@ -1002,7 +1002,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       )}
 
       {/* ── Main chart area ──────────────────────────────────────────────────── */}
-      <div className="relative h-[250px] md:h-[420px]" style={{ cursor: placingMode ? 'crosshair' : 'default' }}>
+      <div className="relative h-[400px] md:h-[600px]" style={{ cursor: placingMode ? 'crosshair' : 'default' }}>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: '#111827' }}>
             <div className="flex flex-col items-center gap-3">

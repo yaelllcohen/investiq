@@ -49,7 +49,7 @@ const OPEN_FILTERS: Filters = {
 
 const DEFAULT_FILTERS: Filters = {
   ...OPEN_FILTERS,
-  changeMin: 0, marketCapMinB: 1, priceMin: 1, volumeMin: 500_000, rsiMin: 40, rsiMax: 70, aboveSma200: true,
+  changeMin: 3, marketCapMinB: 1, priceMin: 1, volumeMin: 500_000, aboveSma200: true,
 }
 
 const PRESETS: { label: string; filters: Filters }[] = [
