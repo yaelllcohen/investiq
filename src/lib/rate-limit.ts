@@ -29,6 +29,7 @@ export const RATE_LIMITS = {
   login:    { limit: isDev ? 100  : 10,  windowMs: 15 * 60 * 1000  }, // 10/15min (100 dev)
   register: { limit: isDev ? 100  : 5,   windowMs: 60 * 60 * 1000  }, // 5/hour   (100 dev)
   stock:    { limit: isDev ? 600  : 60,  windowMs: 60 * 1000        }, // 60/min   (600 dev)
+  scanner:  { limit: isDev ? 100  : 10,  windowMs: 60 * 60 * 1000  }, // 10/hour  (100 dev) — expensive multi-ticker scan
   default:  { limit: isDev ? 1000 : 100, windowMs: 60 * 1000        }, // 100/min  (1000 dev)
 } as const
 

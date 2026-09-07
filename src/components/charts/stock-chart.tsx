@@ -17,7 +17,7 @@ import {
   type UTCTimestamp,
   type IPriceLine,
 } from 'lightweight-charts'
-import { TrendingUp, TrendingDown, Target, X, ExternalLink, Bot, Loader2, CheckCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, Target, X, ExternalLink, Bot, Loader2, CheckCircle, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { calcTradeMetrics } from '@/lib/trade-calc'
 
@@ -26,7 +26,7 @@ import { calcTradeMetrics } from '@/lib/trade-calc'
 type ChartData = { date: string; open: number; high: number; low: number; close: number; volume: number }
 type ChartType = 'נרות' | 'OHLC' | 'קו' | 'שטח' | 'Base'
 type TimeRange = '1D' | '1W' | '1M' | '3M' | '1Y' | '5Y' | 'MAX'
-type IndicatorKey = 'sma50' | 'sma200' | 'ema20' | 'rsi' | 'bb'
+type IndicatorKey = 'sma50' | 'sma200' | 'ema8' | 'ema20' | 'rsi' | 'bb'
 type LevelType = 'entry' | 'stop' | 'target'
 
 const CHART_TYPES: { key: ChartType; label: string }[] = [
@@ -40,7 +40,8 @@ const TIME_RANGES: TimeRange[] = ['1D', '1W', '1M', '3M', '1Y', '5Y', 'MAX']
 
 const IND_META: Record<IndicatorKey, { label: string; color: string }> = {
   sma50:  { label: 'SMA 50',    color: '#8b5cf6' },
-  sma200: { label: 'SMA 200',   color: '#ec4899' },
+  sma200: { label: 'SMA 200',   color: '#3b82f6' },
+  ema8:   { label: 'EMA 8',     color: '#f97316' },
   ema20:  { label: 'EMA 20',    color: '#f59e0b' },
   rsi:    { label: 'RSI 14',    color: '#a78bfa' },
   bb:     { label: 'Bollinger', color: '#38bdf8' },
@@ -55,6 +56,7 @@ const LEVEL_CFG: Record<LevelType, { color: string; label: string; icon: string 
 const IV_KEY = 'iv_indicators_v2'
 const MAIN_H = 420
 const RSI_H  = 110
+const VOL_H  = 90
 
 // ─── Range → API params ───────────────────────────────────────────────────────
 
@@ -142,8 +144,13 @@ function buildIndicator(
     return [s]
   }
   if (key === 'sma200') {
-    const s = chart.addSeries(LineSeries, { ...base, color: '#ec4899', lineWidth: 1 })
+    const s = chart.addSeries(LineSeries, { ...base, color: '#3b82f6', lineWidth: 1 })
     s.setData(calcSMA(data, 200))
+    return [s]
+  }
+  if (key === 'ema8') {
+    const s = chart.addSeries(LineSeries, { ...base, color: '#f97316', lineWidth: 1 })
+    s.setData(calcEMA(data, 8))
     return [s]
   }
   if (key === 'ema20') {
@@ -185,16 +192,39 @@ interface AiLevelsResult {
   }
 }
 
+interface SwingPatternResult {
+  symbol: string
+  pattern: string
+  patternLabel: string
+  confidence: number
+  entry: number
+  stop: number
+  target: number
+  riskReward: string
+  expectedDays: number
+  reasoning: string
+  context: {
+    curPrice: number
+    sma20: number | null
+    sma50: number | null
+    sma200: number | null
+    rsi: number | null
+  }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function StockChart({ ticker, currentPrice }: { ticker: string; currentPrice?: number }) {
   // ── Refs ─────────────────────────────────────────────────────────────────────
   const containerRef   = useRef<HTMLDivElement>(null)
   const rsiContainerRef = useRef<HTMLDivElement>(null)
+  const volContainerRef = useRef<HTMLDivElement>(null)
   const chartRef       = useRef<IChartApi | null>(null)
   const rsiChartRef    = useRef<IChartApi | null>(null)
+  const volChartRef    = useRef<IChartApi | null>(null)
   const mainSeriesRef  = useRef<ISeriesApi<SeriesType> | null>(null)
   const rsiSeriesRef   = useRef<ISeriesApi<'Line'> | null>(null)
+  const volSeriesRef   = useRef<ISeriesApi<'Histogram'> | null>(null)
   const indSeriesRef   = useRef<Map<IndicatorKey, ISeriesApi<'Line'>[]>>(new Map())
   const priceLinesRef  = useRef<Map<LevelType, IPriceLine>>(new Map())
   const levelsRef      = useRef<Record<LevelType, number | null>>({ entry: null, stop: null, target: null })
@@ -204,7 +234,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [chartType, setChartType]         = useState<ChartType>('נרות')
-  const [timeRange, setTimeRange]         = useState<TimeRange>('1Y')
+  const [timeRange, setTimeRange]         = useState<TimeRange>('3M')
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set())
   const [loading, setLoading]             = useState(true)
   const [chartData, setChartData]         = useState<ChartData[]>([])
@@ -218,6 +248,49 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
   const [aiCooldownSecs, setAiCooldownSecs]   = useState(0)
   const [portfolioSize, setPortfolioSize] = useState<number | null>(null)
   const aiPreviewLinesRef = useRef<Map<string, IPriceLine>>(new Map())
+
+  const [patternLoading, setPatternLoading]             = useState(false)
+  const [patternResult, setPatternResult]               = useState<SwingPatternResult | null>(null)
+  const [patternError, setPatternError]                 = useState<string | null>(null)
+  const [patternRateLimited, setPatternRateLimited]     = useState(false)
+  const [patternCooldownUntil, setPatternCooldownUntil] = useState(0)
+  const [patternCooldownSecs, setPatternCooldownSecs]   = useState(0)
+
+  // ── Pattern-analysis cooldown countdown ─────────────────────────────────────
+  useEffect(() => {
+    if (patternCooldownUntil <= Date.now()) return
+    setPatternCooldownSecs(Math.ceil((patternCooldownUntil - Date.now()) / 1000))
+    const id = setInterval(() => {
+      const left = Math.ceil((patternCooldownUntil - Date.now()) / 1000)
+      setPatternCooldownSecs(left > 0 ? left : 0)
+      if (left <= 0) clearInterval(id)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [patternCooldownUntil])
+
+  const fetchPatternAnalysis = useCallback(() => {
+    setPatternLoading(true)
+    setPatternError(null)
+    setPatternRateLimited(false)
+    setPatternResult(null)
+    setAiResult(null)
+    fetch(`/api/swing-analysis/${encodeURIComponent(ticker)}`)
+      .then(async (r) => {
+        const d: SwingPatternResult & { error?: string; rateLimited?: boolean } = await r.json()
+        if (r.status === 429 || d.rateLimited) {
+          setPatternRateLimited(true)
+          setPatternError(d.error ?? 'הגעת למגבלת השימוש היומית של AI. נסי שוב מחר.')
+          return
+        }
+        if (d.error) { setPatternError(d.error); return }
+        setPatternResult(d)
+      })
+      .catch(() => setPatternError('שגיאת רשת — נסה שוב'))
+      .finally(() => {
+        setPatternLoading(false)
+        setPatternCooldownUntil(Date.now() + 10_000)
+      })
+  }, [ticker])
 
   // ── AI cooldown countdown ──────────────────────────────────────────────────
   useEffect(() => {
@@ -369,11 +442,6 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       ms.setData(chartData.filter(d => d.close).map(d => ({ time: t(d), value: d.close })))
     }
 
-    // Volume
-    const vol = chart.addSeries(HistogramSeries, { color: '#3b82f6', priceFormat: { type: 'volume' }, priceScaleId: 'vol' })
-    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.86, bottom: 0 } })
-    vol.setData(chartData.map(d => ({ time: t(d), value: d.volume, color: d.close >= d.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' })))
-
     // Indicators from ref (no rebuild dep)
     for (const key of activeIndRef.current) {
       if (key === 'rsi') continue
@@ -460,12 +528,18 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       setPlacingMode(null)
     })
 
-    // ── Sync RSI chart (if already built) ────────────────────────────────────
+    // ── Sync RSI / Volume charts (if already built) ──────────────────────────
     if (rsiChartRef.current) {
       const mts = chart.timeScale()
       const rts = rsiChartRef.current.timeScale()
       mts.subscribeVisibleLogicalRangeChange(r => { if (r) rts.setVisibleLogicalRange(r) })
       rts.subscribeVisibleLogicalRangeChange(r => { if (r) mts.setVisibleLogicalRange(r) })
+    }
+    if (volChartRef.current) {
+      const mts = chart.timeScale()
+      const vts = volChartRef.current.timeScale()
+      mts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { vts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
+      vts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { mts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
     }
 
     chart.timeScale().fitContent()
@@ -483,6 +557,62 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartData, chartType])
+
+  // ── Volume separate chart panel ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!volContainerRef.current) return
+
+    if (volChartRef.current) {
+      volChartRef.current.remove()
+      volChartRef.current = null
+      volSeriesRef.current = null
+    }
+
+    if (chartData.length === 0) return
+
+    const vc = createChart(volContainerRef.current, {
+      width: volContainerRef.current.clientWidth,
+      height: VOL_H,
+      layout: { background: { type: ColorType.Solid, color: '#0f172a' }, textColor: '#64748b' },
+      grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
+      crosshair: { vertLine: { color: '#334155' }, horzLine: { color: '#334155' } },
+      rightPriceScale: { borderColor: '#1e293b', scaleMargins: { top: 0.15, bottom: 0 } },
+      timeScale: { borderColor: '#1e293b', visible: false },
+      handleScroll: false,
+      handleScale: false,
+    })
+    volChartRef.current = vc
+
+    const volSeries = vc.addSeries(HistogramSeries, {
+      priceFormat: { type: 'volume' },
+      priceLineVisible: false,
+      lastValueVisible: false,
+    })
+    volSeries.setData(chartData.map(d => ({
+      time: t(d),
+      value: d.volume,
+      color: d.close >= d.open ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)',
+    })))
+    volSeriesRef.current = volSeries
+
+    vc.timeScale().fitContent()
+
+    // Sync with main chart
+    if (chartRef.current) {
+      const mts = chartRef.current.timeScale()
+      const vts = vc.timeScale()
+      mts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { vts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
+      vts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { mts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
+    }
+
+    const obs = new ResizeObserver(() => {
+      if (volContainerRef.current && volChartRef.current) volChartRef.current.applyOptions({ width: volContainerRef.current.clientWidth })
+    })
+    obs.observe(volContainerRef.current)
+
+    return () => { obs.disconnect(); vc.remove(); volChartRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartData])
 
   // ── RSI separate chart ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -623,6 +753,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     setAiError(null)
     setAiRateLimited(false)
     setAiResult(null)
+    setPatternResult(null)
     fetch(`/api/ai-levels/${encodeURIComponent(ticker)}`)
       .then(async (r) => {
         const d: AiLevelsResult & { error?: string; rateLimited?: boolean } = await r.json()
@@ -660,6 +791,21 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     }
     setAiResult(null)
   }, [clearAiPreview, syncPriceLine, saveLevel])
+
+  const applyPatternLevels = useCallback((result: SwingPatternResult) => {
+    const toApply: { type: LevelType; price: number }[] = [
+      { type: 'entry',  price: result.entry  },
+      { type: 'stop',   price: result.stop   },
+      { type: 'target', price: result.target },
+    ]
+    for (const { type, price } of toApply) {
+      levelsRef.current = { ...levelsRef.current, [type]: price }
+      setLevels(prev => ({ ...prev, [type]: price }))
+      syncPriceLine(type, price)
+      saveLevel(type, price)
+    }
+    setPatternResult(null)
+  }, [syncPriceLine, saveLevel])
 
   // ── Trade Coach R:R panel ─────────────────────────────────────────────────────
   const tradeMetrics = useMemo(() => {
@@ -775,6 +921,21 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
               {aiLoading ? 'מחשב...' : aiCooldownSecs > 0 ? `${aiCooldownSecs}ש׳` : 'המלצת AI'}
             </span>
           </button>
+
+          {/* Swing pattern-detection button */}
+          <button
+            onClick={fetchPatternAnalysis}
+            disabled={patternLoading || patternCooldownSecs > 0}
+            title={patternCooldownSecs > 0 ? `המתן ${patternCooldownSecs} שניות לפני בקשה חדשה` : 'זיהוי תבנית סווינג באמצעות AI'}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border transition-all disabled:opacity-50"
+            style={{ borderColor: '#f97316', color: '#f97316', background: patternResult ? 'rgba(249,115,22,0.15)' : 'transparent' }}>
+            {patternLoading
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <Sparkles className="h-3 w-3" />}
+            <span>
+              {patternLoading ? 'מנתח...' : patternCooldownSecs > 0 ? `${patternCooldownSecs}ש׳` : 'נתח תבניות'}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -800,6 +961,20 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
           <span>{aiRateLimited ? '⏳' : '⚠'} {aiError}</span>
           <button onClick={() => { setAiError(null); setAiRateLimited(false) }}
             className={aiRateLimited ? 'hover:text-yellow-300' : 'hover:text-red-300'}>
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Pattern-analysis error banner ─────────────────────────────────── */}
+      {patternError && (
+        <div className="flex items-center justify-between px-3 py-2 text-xs border-b"
+          style={patternRateLimited
+            ? { background: 'rgba(234,179,8,0.08)', borderColor: 'rgba(234,179,8,0.2)', color: '#eab308' }
+            : { background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+          <span>{patternRateLimited ? '⏳' : '⚠'} {patternError}</span>
+          <button onClick={() => { setPatternError(null); setPatternRateLimited(false) }}
+            className={patternRateLimited ? 'hover:text-yellow-300' : 'hover:text-red-300'}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -917,7 +1092,103 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
           </div>
         )}
 
+        {/* ── Pattern-analysis modal overlay ───────────────────────────────── */}
+        {patternResult && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(2px)' }}>
+            <div className="rounded-xl border shadow-2xl w-80 max-w-[90%]"
+              style={{ background: '#0f172a', borderColor: '#f9731633', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#1e293b' }}>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" style={{ color: '#f97316' }} />
+                  <span className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>זיהוי תבניות — {ticker}</span>
+                </div>
+                <button onClick={() => setPatternResult(null)}
+                  className="text-zinc-600 hover:text-zinc-300 transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="px-4 py-3 space-y-2.5">
+                {patternResult.pattern === 'none' ? (
+                  <div className="text-center py-4 space-y-1.5">
+                    <p className="text-sm font-medium" style={{ color: '#94a3b8' }}>לא זוהתה תבנית סווינג ברורה כרגע</p>
+                    {patternResult.reasoning && (
+                      <p className="text-[11px]" style={{ color: '#64748b' }}>{patternResult.reasoning}</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black" style={{ color: '#f97316' }}>{patternResult.patternLabel}</span>
+                      <span className="text-xs font-black px-2 py-0.5 rounded"
+                        style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316', border: '1px solid #f9731633' }}>
+                        ביטחון {patternResult.confidence}%
+                      </span>
+                    </div>
+                    {patternResult.reasoning && (
+                      <p className="text-[11px]" style={{ color: '#94a3b8' }}>{patternResult.reasoning}</p>
+                    )}
+
+                    {/* Level rows */}
+                    <div className="grid grid-cols-3 gap-1.5 pt-1">
+                      {([
+                        { label: 'כניסה', val: patternResult.entry,  color: '#3b82f6' },
+                        { label: 'סטופ',  val: patternResult.stop,   color: '#ef4444' },
+                        { label: 'יעד',   val: patternResult.target, color: '#22c55e' },
+                      ] as { label: string; val: number; color: string }[]).map(row => (
+                        <div key={row.label} className="text-center rounded-lg p-2"
+                          style={{ background: row.color + '10', border: `1px solid ${row.color}30` }}>
+                          <div className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: '#64748b' }}>{row.label}</div>
+                          <div className="text-xs font-black tabular-nums" style={{ color: row.color }}>{row.val.toFixed(2)}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 text-[10.5px]">
+                      <span style={{ color: '#64748b' }}>יחס R:R: <b style={{ color: '#818cf8' }}>{patternResult.riskReward}</b></span>
+                      <span style={{ color: '#64748b' }}>משך צפוי: <b style={{ color: '#e2e8f0' }}>{patternResult.expectedDays} ימי מסחר</b></span>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => applyPatternLevels(patternResult)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: '#f97316', color: '#fff' }}>
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        אמץ רמות
+                      </button>
+                      <button
+                        onClick={() => setPatternResult(null)}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: '#1e293b', color: '#94a3b8', border: '1px solid #334155' }}>
+                        בטל
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Disclaimer */}
+                <p className="text-[9px] text-center pt-1" style={{ color: '#334155' }}>
+                  זיהוי תבניות טכני בלבד — אינו מהווה ייעוץ השקעות
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
+      </div>
+
+      {/* ── Volume panel ──────────────────────────────────────────────────────── */}
+      <div className="border-t border-zinc-800">
+        <div className="px-3 py-1" style={{ background: '#0f172a' }}>
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#64748b' }}>נפח מסחר</span>
+        </div>
+        <div ref={volContainerRef} style={{ height: VOL_H, width: '100%', background: '#0f172a' }} />
       </div>
 
       {/* ── RSI panel ────────────────────────────────────────────────────────── */}

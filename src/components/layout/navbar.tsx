@@ -24,6 +24,8 @@ import {
   GraduationCap,
   Menu,
   X,
+  LineChart,
+  Radar,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -54,6 +56,8 @@ const navLinks = [
   { href: '/watchlist',   label: 'מעקב',       icon: Star },
   { href: '/ai-compare',  label: 'השוואה',      icon: GitCompareArrows },
   { href: '/trade-coach', label: 'מאמן עסקאות', icon: BookOpen },
+  { href: '/swing-scanner',  label: 'סורק סווינג',    icon: Radar },
+  { href: '/swing-patterns', label: 'תבניות סווינג',  icon: LineChart },
   { href: '/journal',     label: 'יומן',         icon: NotebookPen },
   { href: '/goals',       label: 'מטרות',        icon: Target },
   { href: '/psychology',  label: 'פסיכולוגיה',   icon: Brain },
@@ -280,6 +284,18 @@ export default function Navbar({ user }: NavbarProps) {
               <Link href="/trade-coach" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
                 <BookOpen className="h-4 w-4" />
                 מאמן עסקאות
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/swing-scanner" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
+                <Radar className="h-4 w-4" />
+                סורק סווינג
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/swing-patterns" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
+                <LineChart className="h-4 w-4" />
+                תבניות סווינג
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
