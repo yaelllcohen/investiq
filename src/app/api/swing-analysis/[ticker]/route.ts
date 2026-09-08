@@ -97,8 +97,8 @@ export async function GET(
   const avgVol20 = volumes.length >= 20 ? volumes.slice(-20).reduce((s, v) => s + v, 0) / 20 : null
   const lastVol = volumes.at(-1) ?? null
 
-  // Sample last ~60 trading days of closes (thin out if longer) for pattern shape
-  const recentCloses = closes.slice(-60)
+  // Sample last ~90 trading days of closes for pattern shape
+  const recentCloses = closes.slice(-90)
   const closesStr = recentCloses.map(c => c.toFixed(2)).join(',')
 
   const f = (v: number | null) => v != null ? v.toFixed(2) : 'N/A'
