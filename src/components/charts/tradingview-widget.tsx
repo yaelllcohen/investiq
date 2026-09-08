@@ -9,20 +9,21 @@ declare global {
   }
 }
 
-let scriptPromise: Promise<void> | null = null
-function loadTradingViewScript(): Promise<void> {
-  if (typeof window === 'undefined') return Promise.resolve()
-  if (window.TradingView) return Promise.resolve()
-  if (scriptPromise) return scriptPromise
-  scriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = 'https://s3.tradingview.com/tv.js'
-    script.async = true
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error('failed to load TradingView script'))
-    document.head.appendChild(script)
+// The tv.js script itself is loaded exactly once, app-wide, via <Script> in
+// (protected)/layout.tsx — this component must never inject it. It only
+// waits for the resulting window.TradingView global to appear (it may
+// already be there, or may still be loading depending on network timing)
+// and then constructs the widget.
+function waitForTradingView(timeoutMs = 15000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') { reject(new Error('no window')); return }
+    if (window.TradingView) { resolve(); return }
+    const start = Date.now()
+    const id = setInterval(() => {
+      if (window.TradingView) { clearInterval(id); resolve(); return }
+      if (Date.now() - start > timeoutMs) { clearInterval(id); reject(new Error('TradingView script did not load in time')) }
+    }, 100)
   })
-  return scriptPromise
 }
 
 export default function TradingViewWidget({ symbol }: { symbol: string }) {
@@ -36,7 +37,7 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     setLoading(true)
     setError(false)
-    loadTradingViewScript()
+    waitForTradingView()
       .then(() => {
         if (dead) return
         // Give the container div's own render/layout pass a moment to settle
