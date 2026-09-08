@@ -423,8 +423,14 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
   }, [saveLevel])
 
   // ── Build main chart ──────────────────────────────────────────────────────────
+  // Note: intentionally does NOT gate on `loading` — chartData and loading are
+  // set in the same fetch chain but aren't guaranteed to land in one React
+  // commit, and this effect's deps don't include `loading`. Gating on a value
+  // outside the dependency array risks bailing on a stale closure and never
+  // re-firing once chartData is actually ready. chartData.length is the only
+  // signal that matters here.
   useEffect(() => {
-    if (!containerRef.current || loading || chartData.length === 0) return
+    if (!containerRef.current || chartData.length === 0) return
 
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
     mainSeriesRef.current = null
@@ -552,8 +558,10 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     if (volChartRef.current) {
       const mts = chart.timeScale()
       const vts = volChartRef.current.timeScale()
+      // Volume→main direction is subscribed once in the volume-chart's own
+      // create-once effect (vc persists across rebuilds; this main chart does
+      // not, so only this direction needs a fresh subscription here).
       mts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { vts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
-      vts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { mts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
     }
 
     chart.timeScale().fitContent()
@@ -593,17 +601,14 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     }
   }, [chartData, chartType, indicatorData, activeIndicators])
 
-  // ── Volume separate chart panel ─────────────────────────────────────────────
+  // ── Volume separate chart panel — created ONCE, data updated separately ──────
+  // The panel itself never changes shape (always a histogram, always visible),
+  // so it's created a single time on mount and torn down on unmount. Data
+  // updates go through the effect below via setData() — no destroy/recreate,
+  // which previously caused a visible flash/reset every time chartData's
+  // array reference changed.
   useEffect(() => {
     if (!volContainerRef.current) return
-
-    if (volChartRef.current) {
-      volChartRef.current.remove()
-      volChartRef.current = null
-      volSeriesRef.current = null
-    }
-
-    if (chartData.length === 0) return
 
     const vc = createChart(volContainerRef.current, {
       width: volContainerRef.current.clientWidth,
@@ -623,30 +628,46 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
       priceLineVisible: false,
       lastValueVisible: false,
     })
-    volSeries.setData(chartData.map(d => ({
-      time: t(d),
-      value: d.volume,
-      color: d.close >= d.open ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)',
-    })))
     volSeriesRef.current = volSeries
 
-    vc.timeScale().fitContent()
-
-    // Sync with main chart
-    if (chartRef.current) {
-      const mts = chartRef.current.timeScale()
-      const vts = vc.timeScale()
-      mts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { vts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
-      vts.subscribeVisibleLogicalRangeChange(r => { if (r) { try { mts.setVisibleLogicalRange(r) } catch { /* ignore */ } } })
-    }
+    // Volume→main sync, subscribed exactly once here (not per chartData/chartType
+    // change) since vc is now long-lived — the handler looks up the CURRENT main
+    // chart via the ref on every call, so it stays correct across main-chart
+    // rebuilds without needing to resubscribe (which would otherwise stack
+    // duplicate listeners on this same persistent timescale).
+    vc.timeScale().subscribeVisibleLogicalRangeChange(r => {
+      if (!r || !chartRef.current) return
+      try { chartRef.current.timeScale().setVisibleLogicalRange(r) } catch { /* ignore */ }
+    })
 
     const obs = new ResizeObserver(() => {
       if (volContainerRef.current && volChartRef.current) volChartRef.current.applyOptions({ width: volContainerRef.current.clientWidth })
     })
     obs.observe(volContainerRef.current)
 
-    return () => { obs.disconnect(); vc.remove(); volChartRef.current = null }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      obs.disconnect()
+      vc.remove()
+      volChartRef.current = null
+      volSeriesRef.current = null
+    }
+  }, [])
+
+  // ── Volume data — runs whenever chartData actually changes ───────────────────
+  // The main→volume sync direction is (re)subscribed from the main-chart-build
+  // effect itself, since that chart object is freshly created every time it
+  // runs — no accumulation risk there.
+  useEffect(() => {
+    const volSeries = volSeriesRef.current
+    const vc = volChartRef.current
+    if (!volSeries || !vc) return
+
+    volSeries.setData(chartData.map(d => ({
+      time: t(d),
+      value: d.volume,
+      color: d.close >= d.open ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)',
+    })))
+    if (chartData.length > 0) vc.timeScale().fitContent()
   }, [chartData])
 
   // ── RSI separate chart ────────────────────────────────────────────────────────
