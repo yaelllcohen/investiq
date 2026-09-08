@@ -28,6 +28,7 @@ interface SimHolding {
   quantity: number
   avgPrice: number
   currentPrice: number
+  stopLoss: number | null
   pl: number
   plPercent: number
 }
@@ -40,6 +41,8 @@ interface Trade {
   quantity: number
   price: number
   total: number
+  stopLoss: number | null
+  autoStopLoss: boolean
 }
 
 interface SimulatorState {
@@ -53,6 +56,7 @@ interface TradeForm {
   action: 'BUY' | 'SELL'
   quantity: string
   price: number | null
+  stopLoss: string
 }
 
 export default function SimulatorPage() {
@@ -68,6 +72,7 @@ export default function SimulatorPage() {
     action: 'BUY',
     quantity: '',
     price: null,
+    stopLoss: '',
   })
   const [searchTicker, setSearchTicker] = useState('')
   const [searchLoading, setSearchLoading] = useState(false)
@@ -110,7 +115,7 @@ export default function SimulatorPage() {
   }
 
   function openTradeModal(ticker: string, price: number, action: 'BUY' | 'SELL' = 'BUY') {
-    setTradeForm({ ticker, action, quantity: '', price })
+    setTradeForm({ ticker, action, quantity: '', price, stopLoss: '' })
     setShowTradeModal(true)
   }
 
@@ -120,6 +125,9 @@ export default function SimulatorPage() {
     setTradeLoading(true)
     setError(null)
     try {
+      const stopLoss = tradeForm.action === 'BUY' && tradeForm.stopLoss.trim()
+        ? parseFloat(tradeForm.stopLoss)
+        : undefined
       const res = await fetch('/api/simulator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -127,6 +135,7 @@ export default function SimulatorPage() {
           ticker: tradeForm.ticker,
           action: tradeForm.action.toLowerCase(),
           quantity: parseFloat(tradeForm.quantity),
+          ...(stopLoss != null && !isNaN(stopLoss) ? { stopLoss } : {}),
         }),
       })
       if (!res.ok) {
@@ -283,7 +292,7 @@ export default function SimulatorPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-zinc-800">
-                    {['סמל', 'כמות', 'מחיר ממוצע', 'נוכחי', 'רו"ה', 'רו"ה %', 'פעולות'].map(
+                    {['סמל', 'כמות', 'מחיר ממוצע', 'נוכחי', 'סטופ לוס', 'רו"ה', 'רו"ה %', 'פעולות'].map(
                       (h) => (
                         <th
                           key={h}
@@ -305,6 +314,9 @@ export default function SimulatorPage() {
                       <td className="px-4 py-3 text-zinc-300">{h.quantity}</td>
                       <td className="px-4 py-3 text-zinc-300">{formatCurrency(h.avgPrice)}</td>
                       <td className="px-4 py-3 text-zinc-300">{formatCurrency(h.currentPrice)}</td>
+                      <td className="px-4 py-3 text-orange-400">
+                        {h.stopLoss != null ? formatCurrency(h.stopLoss) : '—'}
+                      </td>
                       <td
                         className={`px-4 py-3 font-medium ${
                           h.pl >= 0 ? 'text-green-400' : 'text-red-400'
@@ -443,6 +455,11 @@ export default function SimulatorPage() {
                         >
                           {t.action === 'BUY' ? 'קנה' : 'מכור'}
                         </span>
+                        {t.autoStopLoss && (
+                          <div className="text-[9px] text-orange-400 mt-1 whitespace-nowrap">
+                            נמכר אוטומטית בסטופ לוס: {formatCurrency(t.stopLoss ?? 0)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-zinc-300">{t.quantity}</td>
                       <td className="px-4 py-3 text-zinc-300">{formatCurrency(t.price)}</td>
@@ -520,6 +537,24 @@ export default function SimulatorPage() {
                 {tradeTotal > 0 ? formatCurrency(tradeTotal) : '—'}
               </span>
             </div>
+
+            {tradeForm.action === 'BUY' && (
+              <div className="space-y-1.5">
+                <Label className="text-zinc-400 text-xs">סטופ לוס ($) — אופציונלי</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tradeForm.stopLoss}
+                  onChange={(e) => setTradeForm({ ...tradeForm, stopLoss: e.target.value })}
+                  placeholder="לדוגמה: 145.00"
+                  className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 h-9 text-sm"
+                />
+                <p className="text-[10px] text-zinc-500">
+                  אם המחיר יורד מתחת לסכום זה, הפוזיציה תימכר אוטומטית בטעינת הדף הבאה.
+                </p>
+              </div>
+            )}
 
             {error && (
               <p className="text-red-400 text-xs">{error}</p>

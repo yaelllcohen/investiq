@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { yahooFinance } from '@/lib/yahoo-finance'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { tradeSchema, validationError } from '@/lib/schemas'
+import { buildAccountPayload, computeHoldings } from '@/lib/simulator'
 
 export async function GET() {
   const session = await auth()
@@ -21,46 +22,7 @@ export async function GET() {
       include: { trades: { orderBy: { timestamp: 'desc' } } },
     })
   }
-  const tradesWithNet = (account.trades || []).map(t => ({
-    ...t,
-    total: t.action === 'buy' ? -(t.price * t.quantity) : t.price * t.quantity,
-  }))
-  const holdings = computeHoldings(account.trades || [])
-  const enriched = await Promise.all(
-    Object.entries(holdings).map(async ([ticker, qty]) => {
-      const avgPrice = computeAvgPrice(account!.trades || [], ticker)
-      try {
-        const qRaw = await yahooFinance.quote(ticker)
-        const q = qRaw as { regularMarketPrice?: number }
-        const currentPrice = q.regularMarketPrice ?? avgPrice
-        return { ticker, quantity: qty, avgPrice, currentPrice, value: currentPrice * qty, pnl: (currentPrice - avgPrice) * qty }
-      } catch {
-        return { ticker, quantity: qty, avgPrice, currentPrice: avgPrice, value: avgPrice * qty, pnl: 0 }
-      }
-    })
-  )
-  return NextResponse.json({
-    balance: account.balance,
-    holdings: enriched.filter(h => h.quantity > 0) ?? [],
-    trades: tradesWithNet ?? [],
-  })
-}
-
-function computeHoldings(trades: Array<{ ticker: string; action: string; quantity: number }>) {
-  const h: Record<string, number> = {}
-  for (const t of trades) {
-    if (!h[t.ticker]) h[t.ticker] = 0
-    h[t.ticker] += t.action === 'buy' ? t.quantity : -t.quantity
-  }
-  return h
-}
-
-function computeAvgPrice(trades: Array<{ ticker: string; action: string; quantity: number; price: number }>, ticker: string) {
-  const buys = trades.filter(t => t.ticker === ticker && t.action === 'buy')
-  if (!buys.length) return 0
-  const total = buys.reduce((sum, t) => sum + t.price * t.quantity, 0)
-  const qty = buys.reduce((sum, t) => sum + t.quantity, 0)
-  return qty > 0 ? total / qty : 0
+  return NextResponse.json(await buildAccountPayload(account))
 }
 
 export async function POST(req: Request) {
@@ -70,13 +32,11 @@ export async function POST(req: Request) {
   const rl = await rateLimit(userId, 'default')
   if (!rl.success) return rateLimitResponse(rl.reset)
   const body = await req.json()
-  console.log('[simulator] request body:', JSON.stringify(body))
   const parsed = tradeSchema.safeParse(body)
   if (!parsed.success) {
-    console.error('[simulator] validation errors:', JSON.stringify(parsed.error.flatten(), null, 2))
     return NextResponse.json(validationError(parsed.error), { status: 400 })
   }
-  const { ticker, action, quantity: qty } = parsed.data
+  const { ticker, action, quantity: qty, stopLoss } = parsed.data
   const qRaw = await yahooFinance.quote(ticker)
   const q = qRaw as { regularMarketPrice?: number }
   const price = q.regularMarketPrice ?? 0
@@ -96,8 +56,16 @@ export async function POST(req: Request) {
   }
   const newBalance = action === 'buy' ? account.balance - cost : account.balance + cost
   await prisma.simulatorAccount.update({ where: { id: account.id }, data: { balance: newBalance } })
-  const trade = await prisma.simulatorTrade.create({
-    data: { accountId: account.id, ticker, action, quantity: qty, price },
+  await prisma.simulatorTrade.create({
+    data: {
+      accountId: account.id, ticker, action, quantity: qty, price,
+      stopLoss: action === 'buy' ? stopLoss ?? null : null,
+    },
   })
-  return NextResponse.json({ trade, balance: newBalance })
+
+  const fresh = await prisma.simulatorAccount.findUnique({
+    where: { id: account.id },
+    include: { trades: { orderBy: { timestamp: 'desc' } } },
+  })
+  return NextResponse.json(await buildAccountPayload(fresh!))
 }

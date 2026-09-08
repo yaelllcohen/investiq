@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { Loader2, Maximize2, Minimize2 } from 'lucide-react'
+import { Loader2, Maximize2, Minimize2, LineChart } from 'lucide-react'
 
 declare global {
   interface Window {
@@ -29,7 +29,11 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
   const containerId = `tv_${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [loading, setLoading] = useState(true)
+  // The heavy tv.js script (and the iframe it injects) has been reported to
+  // crash some mobile browsers — require an explicit tap before loading it,
+  // rather than pulling it in the moment this tab is opened.
+  const [hasStarted, setHasStarted] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -37,6 +41,7 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
   // grows the container (via the native Fullscreen API), no need to recreate
   // the widget instance when toggling.
   useEffect(() => {
+    if (!hasStarted) return
     let dead = false
     setLoading(true)
     setError(false)
@@ -74,7 +79,7 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
       })
       .catch(() => { if (!dead) { setError(true); setLoading(false) } })
     return () => { dead = true }
-  }, [symbol, containerId])
+  }, [symbol, containerId, hasStarted])
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(document.fullscreenElement === wrapperRef.current)
@@ -89,6 +94,25 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
       wrapperRef.current?.requestFullscreen?.().catch(() => { /* ignore */ })
     }
   }, [])
+
+  if (!hasStarted) {
+    return (
+      <div
+        className="rounded-xl border border-white/5 flex flex-col items-center justify-center gap-3"
+        style={{ background: '#111827', height: 600 }}
+      >
+        <LineChart className="h-8 w-8" style={{ color: '#3b82f6' }} />
+        <button
+          onClick={() => setHasStarted(true)}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-all"
+          style={{ background: '#3b82f6', color: '#fff' }}
+        >
+          טען TradingView
+        </button>
+        <p className="text-xs" style={{ color: '#64748b' }}>הגרף נטען מ-TradingView.com</p>
+      </div>
+    )
+  }
 
   return (
     <div

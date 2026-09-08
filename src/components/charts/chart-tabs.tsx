@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import StockChart from './stock-chart'
 import TradingViewWidget from './tradingview-widget'
+import ErrorBoundary from './error-boundary'
 import { toTradingViewSymbol } from '@/lib/tradingview'
 
 type Tab = 'advanced' | 'tradingview'
@@ -17,6 +18,7 @@ interface ChartTabsProps {
 export default function ChartTabs({ ticker, currentPrice, exchange, quoteType }: ChartTabsProps) {
   const [tab, setTab] = useState<Tab>('advanced')
   const [tvMounted, setTvMounted] = useState(false)
+  const [tvKey, setTvKey] = useState(0)
   const tvSymbol = toTradingViewSymbol(ticker, exchange, quoteType)
 
   // Lazy-mount the TradingView widget on first visit to that tab, then keep it
@@ -50,7 +52,14 @@ export default function ChartTabs({ ticker, currentPrice, exchange, quoteType }:
         <StockChart ticker={ticker} currentPrice={currentPrice} />
       </div>
       <div hidden={tab !== 'tradingview'}>
-        {tvMounted && <TradingViewWidget symbol={tvSymbol} />}
+        {tvMounted && (
+          <ErrorBoundary
+            fallbackTitle="שגיאה בטעינת TradingView"
+            onRetry={() => setTvKey(k => k + 1)}
+          >
+            <TradingViewWidget key={tvKey} symbol={tvSymbol} />
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   )
