@@ -33,31 +33,39 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
 
   useEffect(() => {
     let dead = false
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
     setLoading(true)
     setError(false)
     loadTradingViewScript()
       .then(() => {
-        if (dead || !containerRef.current || !window.TradingView) return
-        containerRef.current.innerHTML = ''
-        new window.TradingView.widget({
-          container_id: containerId,
-          symbol,
-          width: '100%',
-          height: 600,
-          interval: 'D',
-          timezone: 'Asia/Jerusalem',
-          theme: 'dark',
-          style: '1',
-          locale: 'he_IL',
-          toolbar_bg: '#1a1a2e',
-          enable_publishing: false,
-          hide_side_toolbar: false,
-          allow_symbol_change: false,
-        })
-        setLoading(false)
+        if (dead) return
+        // Give the container div's own render/layout pass a moment to settle
+        // before handing it to the widget — creating the widget in the same
+        // tick the script resolves has been seen to crash on first load if
+        // the DOM node isn't fully ready yet.
+        timeoutId = setTimeout(() => {
+          if (dead || !containerRef.current || !window.TradingView) return
+          containerRef.current.innerHTML = ''
+          new window.TradingView.widget({
+            container_id: containerId,
+            symbol,
+            width: '100%',
+            height: 600,
+            interval: 'D',
+            timezone: 'Asia/Jerusalem',
+            theme: 'dark',
+            style: '1',
+            locale: 'he_IL',
+            toolbar_bg: '#1a1a2e',
+            enable_publishing: false,
+            hide_side_toolbar: false,
+            allow_symbol_change: false,
+          })
+          setLoading(false)
+        }, 100)
       })
       .catch(() => { if (!dead) { setError(true); setLoading(false) } })
-    return () => { dead = true }
+    return () => { dead = true; if (timeoutId) clearTimeout(timeoutId) }
   }, [symbol, containerId])
 
   return (

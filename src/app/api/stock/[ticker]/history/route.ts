@@ -8,13 +8,16 @@ export const dynamic = 'force-dynamic'
 
 const VALID_RANGES = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '5y', 'max'] as const
 type ChartInterval = '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m' | '1h' | '1d' | '5d' | '1wk' | '1mo' | '3mo'
-const VALID_INTERVALS: ChartInterval[] = ['5m', '15m', '1d', '1wk', '1mo']
+const VALID_INTERVALS: ChartInterval[] = ['5m', '15m', '60m', '1d', '1wk', '1mo']
 
 function getRangeDate(range: string): string {
   const now = new Date()
   const d = new Date(now)
   switch (range) {
-    case '1d':  d.setDate(d.getDate() - 1); break
+    // Go back 4 calendar days (not 1) so a weekend/holiday doesn't leave zero
+    // intraday bars — the client slices this down to just the most recent
+    // trading day actually present in the results.
+    case '1d':  d.setDate(d.getDate() - 4); break
     case '5d':  d.setDate(d.getDate() - 5); break
     case '1mo': d.setMonth(d.getMonth() - 1); break
     case '3mo': d.setMonth(d.getMonth() - 3); break

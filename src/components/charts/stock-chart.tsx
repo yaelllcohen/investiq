@@ -4,12 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createChart,
   CandlestickSeries,
+  BarSeries,
   LineSeries,
+  AreaSeries,
+  BaselineSeries,
   HistogramSeries,
   LineStyle,
   ColorType,
   type IChartApi,
   type ISeriesApi,
+  type SeriesType,
   type IPaneApi,
   type Time,
   type UTCTimestamp,
@@ -21,20 +25,40 @@ import { X, Bot, Loader2, CheckCircle, Sparkles } from 'lucide-react'
 
 type ChartData = { date: string; open: number; high: number; low: number; close: number; volume: number }
 type TimeRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | 'MAX'
+type ChartType = 'candles' | 'ohlc' | 'line' | 'area' | 'baseline'
 type IndicatorKey = 'ema8' | 'sma200' | 'ema20' | 'sma50' | 'rsi' | 'bb'
 type LevelType = 'entry' | 'stop' | 'target'
 
 const TIME_RANGES: TimeRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'MAX']
 
+const CHART_TYPES: { key: ChartType; label: string }[] = [
+  { key: 'candles',  label: 'נרות' },
+  { key: 'ohlc',     label: 'OHLC' },
+  { key: 'line',     label: 'קו' },
+  { key: 'area',     label: 'שטח' },
+  { key: 'baseline', label: 'Baseline' },
+]
+
+// '1D' fetches a 4-day intraday window (weekend-safe) and is sliced down to
+// the last trading day actually present in the results — see filterLastDay().
 const RANGE_MAP: Record<TimeRange, { range: string; interval: string }> = {
   '1D':  { range: '1d',  interval: '5m'  },
-  '1W':  { range: '5d',  interval: '15m' },
+  '1W':  { range: '5d',  interval: '60m' },
   '1M':  { range: '1mo', interval: '1d'  },
   '3M':  { range: '3mo', interval: '1d'  },
   '6M':  { range: '6mo', interval: '1d'  },
   '1Y':  { range: '1y',  interval: '1d'  },
   '5Y':  { range: '5y',  interval: '1wk' },
   'MAX': { range: 'max', interval: '1mo' },
+}
+
+// Keep only bars from the most recent calendar date present — turns the
+// (deliberately wider, weekend-safe) 4-day intraday fetch into "just the
+// last trading day".
+function filterLastTradingDay(rows: ChartData[]): ChartData[] {
+  if (rows.length === 0) return rows
+  const lastDay = rows[rows.length - 1].date.slice(0, 10)
+  return rows.filter(r => r.date.slice(0, 10) === lastDay)
 }
 
 const IND_META: Record<IndicatorKey, { label: string; color: string }> = {
@@ -173,7 +197,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
   // Chart object refs — the ONLY effect below owns these
   const containerRef  = useRef<HTMLDivElement>(null)
   const chartRef       = useRef<IChartApi | null>(null)
-  const mainSeriesRef  = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const mainSeriesRef  = useRef<ISeriesApi<SeriesType> | null>(null)
   const volSeriesRef   = useRef<ISeriesApi<'Histogram'> | null>(null)
   const rsiSeriesRef   = useRef<ISeriesApi<'Line'> | null>(null)
   const rsiPaneRef     = useRef<IPaneApi<Time> | null>(null)
@@ -188,6 +212,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [timeRange, setTimeRange]     = useState<TimeRange>('1D')
+  const [chartType, setChartType]     = useState<ChartType>('candles')
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
   const [loading, setLoading]         = useState(true)
   const [hasData, setHasData]         = useState(true)
@@ -346,7 +371,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
 
         const parseRows = (json: unknown): ChartData[] =>
           Array.isArray(json) ? json as ChartData[] : ((json as { data?: ChartData[] })?.data ?? [])
-        const rows = parseRows(mainJson)
+        const rows = timeRange === '1D' ? filterLastTradingDay(parseRows(mainJson)) : parseRows(mainJson)
         const indRows = parseRows(indJson)
 
         chartDataRef.current = rows
@@ -370,16 +395,37 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         chartRef.current = chart
 
-        // ── Main candlesticks (pane 0) ─────────────────────────────────────────
-        const ms = chart.addSeries(CandlestickSeries, {
-          upColor: '#22c55e', downColor: '#ef4444',
-          borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-          wickUpColor: '#22c55e', wickDownColor: '#ef4444',
-        })
+        // ── Main series (pane 0) — type per chartType ───────────────────────────
+        const isOHLC = chartType === 'candles' || chartType === 'ohlc'
+        let ms: ISeriesApi<SeriesType>
+        if (chartType === 'candles') {
+          ms = chart.addSeries(CandlestickSeries, {
+            upColor: '#22c55e', downColor: '#ef4444',
+            borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+            wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+          })
+        } else if (chartType === 'ohlc') {
+          ms = chart.addSeries(BarSeries, { upColor: '#22c55e', downColor: '#ef4444', openVisible: true })
+        } else if (chartType === 'line') {
+          ms = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 })
+        } else if (chartType === 'area') {
+          ms = chart.addSeries(AreaSeries, { lineColor: '#3b82f6', topColor: 'rgba(59,130,246,0.4)', bottomColor: 'rgba(59,130,246,0)', lineWidth: 2 })
+        } else {
+          ms = chart.addSeries(BaselineSeries, {
+            baseValue: { type: 'price', price: rows[0].close },
+            topLineColor: '#22c55e', topFillColor1: 'rgba(34,197,94,0.28)', topFillColor2: 'rgba(34,197,94,0.05)',
+            bottomLineColor: '#ef4444', bottomFillColor1: 'rgba(239,68,68,0.05)', bottomFillColor2: 'rgba(239,68,68,0.28)',
+            lineWidth: 2,
+          })
+        }
         mainSeriesRef.current = ms
-        ms.setData(rows.filter(d => d.open && d.high && d.low && d.close).map(d => ({
-          time: toTime(d), open: d.open, high: d.high, low: d.low, close: d.close,
-        })))
+        if (isOHLC) {
+          ms.setData(rows.filter(d => d.open && d.high && d.low && d.close).map(d => ({
+            time: toTime(d), open: d.open, high: d.high, low: d.low, close: d.close,
+          })))
+        } else {
+          ms.setData(rows.filter(d => d.close).map(d => ({ time: toTime(d), value: d.close })))
+        }
         chart.panes()[0]?.setStretchFactor(3)
 
         // ── Volume pane (pane 1) — always visible ──────────────────────────────
@@ -431,7 +477,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const sd: any = param.seriesData?.get(ms)
           if (!sd) { tip.style.display = 'none'; return }
-          const close: number = sd.close ?? 0
+          const close: number = isOHLC ? (sd.close ?? 0) : (sd.value ?? 0)
           if (close <= 0) { tip.style.display = 'none'; return }
 
           const idx = tIdx.get(param.time as number) ?? -1
@@ -447,16 +493,16 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           let html = `<div style="font-weight:800;font-size:13px;color:${col};margin-bottom:5px;">
             ${close.toFixed(2)} <span style="font-size:10px;font-weight:600;">${sign}${chg.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>
           </div>`
-          if (raw) {
+          if (isOHLC && raw) {
             html += `<div style="font-size:10.5px;color:#94a3b8;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-bottom:4px;">
               <span>פתיחה <b style="color:#e2e8f0">${raw.open.toFixed(2)}</b></span>
               <span>סגירה <b style="color:#e2e8f0">${close.toFixed(2)}</b></span>
               <span>שיא <b style="color:#22c55e">${raw.high.toFixed(2)}</b></span>
               <span>שפל <b style="color:#ef4444">${raw.low.toFixed(2)}</b></span>
             </div>`
-            if (raw.volume) {
-              html += `<div style="font-size:10px;color:#64748b;">מחזור: <b style="color:#94a3b8">${raw.volume.toLocaleString('he-IL')}</b></div>`
-            }
+          }
+          if (raw?.volume) {
+            html += `<div style="font-size:10px;color:#64748b;">מחזור: <b style="color:#94a3b8">${raw.volume.toLocaleString('he-IL')}</b></div>`
           }
           html += `<div style="font-size:10px;color:#475569;margin-top:2px;">${dateStr}</div>`
           tip.innerHTML = html
@@ -507,7 +553,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
       indSeriesRef.current.clear()
       priceLinesRef.current.clear()
     }
-  }, [ticker, timeRange, applyLevel, drawPriceLine, addRsiPane])
+  }, [ticker, timeRange, chartType, applyLevel, drawPriceLine, addRsiPane])
 
   // ── AI recommendation ──────────────────────────────────────────────────────
   const fetchAiLevels = useCallback(() => {
@@ -570,8 +616,20 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
   return (
     <div className="rounded-xl overflow-hidden border border-white/5" style={{ background: '#111827' }}>
 
-      {/* ── Indicators row ────────────────────────────────────────────────────── */}
+      {/* ── Chart type + indicators row ───────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2 border-b border-white/5 overflow-x-auto scrollbar-none flex-nowrap">
+        <div className="flex gap-1">
+          {CHART_TYPES.map(({ key, label }) => (
+            <button key={key} onClick={() => setChartType(key)}
+              className={btn(chartType === key)}
+              style={chartType === key ? { background: '#3b82f6' } : {}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-4 self-center bg-zinc-800" />
+
         <div className="flex flex-wrap gap-1">
           {(Object.keys(IND_META) as IndicatorKey[]).map(key => {
             const { label, color } = IND_META[key]
