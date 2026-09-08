@@ -665,10 +665,6 @@ export type TradeDecisionUncheckedUpdateManyWithoutUserNestedInput = {
   deleteMany?: Prisma.TradeDecisionScalarWhereInput | Prisma.TradeDecisionScalarWhereInput[]
 }
 
-export type BoolFieldUpdateOperationsInput = {
-  set?: boolean
-}
-
 export type TradeDecisionCreateWithoutUserInput = {
   id?: string
   ticker: string
