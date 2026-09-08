@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json(validationError(parsed.error), { status: 400 })
   }
-  const { ticker, action, quantity: qty, stopLoss } = parsed.data
+  const { ticker, action, quantity: qty, stopLoss, takeProfit } = parsed.data
   const qRaw = await yahooFinance.quote(ticker)
   const q = qRaw as { regularMarketPrice?: number }
   const price = q.regularMarketPrice ?? 0
@@ -60,6 +60,7 @@ export async function POST(req: Request) {
     data: {
       accountId: account.id, ticker, action, quantity: qty, price,
       stopLoss: action === 'buy' ? stopLoss ?? null : null,
+      takeProfit: action === 'buy' ? takeProfit ?? null : null,
     },
   })
 

@@ -176,7 +176,9 @@ export const SimulatorTradeScalarFieldEnum = {
   quantity: 'quantity',
   price: 'price',
   stopLoss: 'stopLoss',
+  takeProfit: 'takeProfit',
   autoStopLoss: 'autoStopLoss',
+  autoTakeProfit: 'autoTakeProfit',
   timestamp: 'timestamp'
 } as const
 

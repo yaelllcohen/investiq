@@ -10,6 +10,7 @@ import {
   CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
+import Link from 'next/link'
 import { Search, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +30,7 @@ interface SimHolding {
   avgPrice: number
   currentPrice: number
   stopLoss: number | null
+  takeProfit: number | null
   pl: number
   plPercent: number
 }
@@ -42,7 +44,9 @@ interface Trade {
   price: number
   total: number
   stopLoss: number | null
+  takeProfit: number | null
   autoStopLoss: boolean
+  autoTakeProfit: boolean
 }
 
 interface SimulatorState {
@@ -57,6 +61,7 @@ interface TradeForm {
   quantity: string
   price: number | null
   stopLoss: string
+  takeProfit: string
 }
 
 export default function SimulatorPage() {
@@ -73,6 +78,7 @@ export default function SimulatorPage() {
     quantity: '',
     price: null,
     stopLoss: '',
+    takeProfit: '',
   })
   const [searchTicker, setSearchTicker] = useState('')
   const [searchLoading, setSearchLoading] = useState(false)
@@ -115,7 +121,7 @@ export default function SimulatorPage() {
   }
 
   function openTradeModal(ticker: string, price: number, action: 'BUY' | 'SELL' = 'BUY') {
-    setTradeForm({ ticker, action, quantity: '', price, stopLoss: '' })
+    setTradeForm({ ticker, action, quantity: '', price, stopLoss: '', takeProfit: '' })
     setShowTradeModal(true)
   }
 
@@ -128,6 +134,9 @@ export default function SimulatorPage() {
       const stopLoss = tradeForm.action === 'BUY' && tradeForm.stopLoss.trim()
         ? parseFloat(tradeForm.stopLoss)
         : undefined
+      const takeProfit = tradeForm.action === 'BUY' && tradeForm.takeProfit.trim()
+        ? parseFloat(tradeForm.takeProfit)
+        : undefined
       const res = await fetch('/api/simulator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -136,6 +145,7 @@ export default function SimulatorPage() {
           action: tradeForm.action.toLowerCase(),
           quantity: parseFloat(tradeForm.quantity),
           ...(stopLoss != null && !isNaN(stopLoss) ? { stopLoss } : {}),
+          ...(takeProfit != null && !isNaN(takeProfit) ? { takeProfit } : {}),
         }),
       })
       if (!res.ok) {
@@ -292,7 +302,7 @@ export default function SimulatorPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-zinc-800">
-                    {['סמל', 'כמות', 'מחיר ממוצע', 'נוכחי', 'סטופ לוס', 'רו"ה', 'רו"ה %', 'פעולות'].map(
+                    {['סמל', 'כמות', 'מחיר ממוצע', 'נוכחי', 'סטופ לוס', 'יעד רווח', 'רו"ה', 'רו"ה %', 'פעולות'].map(
                       (h) => (
                         <th
                           key={h}
@@ -310,12 +320,19 @@ export default function SimulatorPage() {
                       key={h.ticker}
                       className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
                     >
-                      <td className="px-4 py-3 font-bold text-blue-400">{h.ticker}</td>
+                      <td className="px-4 py-3 font-bold text-blue-400">
+                        <Link href={`/stock/${h.ticker}`} className="hover:underline">
+                          {h.ticker}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3 text-zinc-300">{h.quantity}</td>
                       <td className="px-4 py-3 text-zinc-300">{formatCurrency(h.avgPrice)}</td>
                       <td className="px-4 py-3 text-zinc-300">{formatCurrency(h.currentPrice)}</td>
                       <td className="px-4 py-3 text-orange-400">
                         {h.stopLoss != null ? formatCurrency(h.stopLoss) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-green-400">
+                        {h.takeProfit != null ? formatCurrency(h.takeProfit) : '—'}
                       </td>
                       <td
                         className={`px-4 py-3 font-medium ${
@@ -460,6 +477,11 @@ export default function SimulatorPage() {
                             נמכר אוטומטית בסטופ לוס: {formatCurrency(t.stopLoss ?? 0)}
                           </div>
                         )}
+                        {t.autoTakeProfit && (
+                          <div className="text-[9px] text-green-400 mt-1 whitespace-nowrap">
+                            נמכר אוטומטית ביעד רווח: {formatCurrency(t.takeProfit ?? 0)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-zinc-300">{t.quantity}</td>
                       <td className="px-4 py-3 text-zinc-300">{formatCurrency(t.price)}</td>
@@ -539,21 +561,39 @@ export default function SimulatorPage() {
             </div>
 
             {tradeForm.action === 'BUY' && (
-              <div className="space-y-1.5">
-                <Label className="text-zinc-400 text-xs">סטופ לוס ($) — אופציונלי</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={tradeForm.stopLoss}
-                  onChange={(e) => setTradeForm({ ...tradeForm, stopLoss: e.target.value })}
-                  placeholder="לדוגמה: 145.00"
-                  className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 h-9 text-sm"
-                />
-                <p className="text-[10px] text-zinc-500">
-                  אם המחיר יורד מתחת לסכום זה, הפוזיציה תימכר אוטומטית בטעינת הדף הבאה.
-                </p>
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-zinc-400 text-xs">סטופ לוס ($) — אופציונלי</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tradeForm.stopLoss}
+                    onChange={(e) => setTradeForm({ ...tradeForm, stopLoss: e.target.value })}
+                    placeholder="לדוגמה: 145.00"
+                    className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-zinc-500">
+                    אם המחיר יורד מתחת לסכום זה, הפוזיציה תימכר אוטומטית בטעינת הדף הבאה.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-zinc-400 text-xs">מכור אוטומטית ב-$ (Take Profit) — אופציונלי</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tradeForm.takeProfit}
+                    onChange={(e) => setTradeForm({ ...tradeForm, takeProfit: e.target.value })}
+                    placeholder="לדוגמה: 200.00"
+                    className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-zinc-500">
+                    אם המחיר מגיע לסכום זה, הפוזיציה תימכר אוטומטית בטעינת הדף הבאה.
+                  </p>
+                </div>
+              </>
             )}
 
             {error && (

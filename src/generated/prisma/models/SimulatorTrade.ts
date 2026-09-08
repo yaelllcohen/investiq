@@ -30,12 +30,14 @@ export type SimulatorTradeAvgAggregateOutputType = {
   quantity: number | null
   price: number | null
   stopLoss: number | null
+  takeProfit: number | null
 }
 
 export type SimulatorTradeSumAggregateOutputType = {
   quantity: number | null
   price: number | null
   stopLoss: number | null
+  takeProfit: number | null
 }
 
 export type SimulatorTradeMinAggregateOutputType = {
@@ -46,7 +48,9 @@ export type SimulatorTradeMinAggregateOutputType = {
   quantity: number | null
   price: number | null
   stopLoss: number | null
+  takeProfit: number | null
   autoStopLoss: boolean | null
+  autoTakeProfit: boolean | null
   timestamp: Date | null
 }
 
@@ -58,7 +62,9 @@ export type SimulatorTradeMaxAggregateOutputType = {
   quantity: number | null
   price: number | null
   stopLoss: number | null
+  takeProfit: number | null
   autoStopLoss: boolean | null
+  autoTakeProfit: boolean | null
   timestamp: Date | null
 }
 
@@ -70,7 +76,9 @@ export type SimulatorTradeCountAggregateOutputType = {
   quantity: number
   price: number
   stopLoss: number
+  takeProfit: number
   autoStopLoss: number
+  autoTakeProfit: number
   timestamp: number
   _all: number
 }
@@ -80,12 +88,14 @@ export type SimulatorTradeAvgAggregateInputType = {
   quantity?: true
   price?: true
   stopLoss?: true
+  takeProfit?: true
 }
 
 export type SimulatorTradeSumAggregateInputType = {
   quantity?: true
   price?: true
   stopLoss?: true
+  takeProfit?: true
 }
 
 export type SimulatorTradeMinAggregateInputType = {
@@ -96,7 +106,9 @@ export type SimulatorTradeMinAggregateInputType = {
   quantity?: true
   price?: true
   stopLoss?: true
+  takeProfit?: true
   autoStopLoss?: true
+  autoTakeProfit?: true
   timestamp?: true
 }
 
@@ -108,7 +120,9 @@ export type SimulatorTradeMaxAggregateInputType = {
   quantity?: true
   price?: true
   stopLoss?: true
+  takeProfit?: true
   autoStopLoss?: true
+  autoTakeProfit?: true
   timestamp?: true
 }
 
@@ -120,7 +134,9 @@ export type SimulatorTradeCountAggregateInputType = {
   quantity?: true
   price?: true
   stopLoss?: true
+  takeProfit?: true
   autoStopLoss?: true
+  autoTakeProfit?: true
   timestamp?: true
   _all?: true
 }
@@ -219,7 +235,9 @@ export type SimulatorTradeGroupByOutputType = {
   quantity: number
   price: number
   stopLoss: number | null
+  takeProfit: number | null
   autoStopLoss: boolean
+  autoTakeProfit: boolean
   timestamp: Date
   _count: SimulatorTradeCountAggregateOutputType | null
   _avg: SimulatorTradeAvgAggregateOutputType | null
@@ -254,7 +272,9 @@ export type SimulatorTradeWhereInput = {
   quantity?: Prisma.FloatFilter<"SimulatorTrade"> | number
   price?: Prisma.FloatFilter<"SimulatorTrade"> | number
   stopLoss?: Prisma.FloatNullableFilter<"SimulatorTrade"> | number | null
+  takeProfit?: Prisma.FloatNullableFilter<"SimulatorTrade"> | number | null
   autoStopLoss?: Prisma.BoolFilter<"SimulatorTrade"> | boolean
+  autoTakeProfit?: Prisma.BoolFilter<"SimulatorTrade"> | boolean
   timestamp?: Prisma.DateTimeFilter<"SimulatorTrade"> | Date | string
   account?: Prisma.XOR<Prisma.SimulatorAccountScalarRelationFilter, Prisma.SimulatorAccountWhereInput>
 }
@@ -267,7 +287,9 @@ export type SimulatorTradeOrderByWithRelationInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrderInput | Prisma.SortOrder
+  takeProfit?: Prisma.SortOrderInput | Prisma.SortOrder
   autoStopLoss?: Prisma.SortOrder
+  autoTakeProfit?: Prisma.SortOrder
   timestamp?: Prisma.SortOrder
   account?: Prisma.SimulatorAccountOrderByWithRelationInput
 }
@@ -283,7 +305,9 @@ export type SimulatorTradeWhereUniqueInput = Prisma.AtLeast<{
   quantity?: Prisma.FloatFilter<"SimulatorTrade"> | number
   price?: Prisma.FloatFilter<"SimulatorTrade"> | number
   stopLoss?: Prisma.FloatNullableFilter<"SimulatorTrade"> | number | null
+  takeProfit?: Prisma.FloatNullableFilter<"SimulatorTrade"> | number | null
   autoStopLoss?: Prisma.BoolFilter<"SimulatorTrade"> | boolean
+  autoTakeProfit?: Prisma.BoolFilter<"SimulatorTrade"> | boolean
   timestamp?: Prisma.DateTimeFilter<"SimulatorTrade"> | Date | string
   account?: Prisma.XOR<Prisma.SimulatorAccountScalarRelationFilter, Prisma.SimulatorAccountWhereInput>
 }, "id">
@@ -296,7 +320,9 @@ export type SimulatorTradeOrderByWithAggregationInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrderInput | Prisma.SortOrder
+  takeProfit?: Prisma.SortOrderInput | Prisma.SortOrder
   autoStopLoss?: Prisma.SortOrder
+  autoTakeProfit?: Prisma.SortOrder
   timestamp?: Prisma.SortOrder
   _count?: Prisma.SimulatorTradeCountOrderByAggregateInput
   _avg?: Prisma.SimulatorTradeAvgOrderByAggregateInput
@@ -316,7 +342,9 @@ export type SimulatorTradeScalarWhereWithAggregatesInput = {
   quantity?: Prisma.FloatWithAggregatesFilter<"SimulatorTrade"> | number
   price?: Prisma.FloatWithAggregatesFilter<"SimulatorTrade"> | number
   stopLoss?: Prisma.FloatNullableWithAggregatesFilter<"SimulatorTrade"> | number | null
+  takeProfit?: Prisma.FloatNullableWithAggregatesFilter<"SimulatorTrade"> | number | null
   autoStopLoss?: Prisma.BoolWithAggregatesFilter<"SimulatorTrade"> | boolean
+  autoTakeProfit?: Prisma.BoolWithAggregatesFilter<"SimulatorTrade"> | boolean
   timestamp?: Prisma.DateTimeWithAggregatesFilter<"SimulatorTrade"> | Date | string
 }
 
@@ -327,7 +355,9 @@ export type SimulatorTradeCreateInput = {
   quantity: number
   price: number
   stopLoss?: number | null
+  takeProfit?: number | null
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: Date | string
   account: Prisma.SimulatorAccountCreateNestedOneWithoutTradesInput
 }
@@ -340,7 +370,9 @@ export type SimulatorTradeUncheckedCreateInput = {
   quantity: number
   price: number
   stopLoss?: number | null
+  takeProfit?: number | null
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: Date | string
 }
 
@@ -351,7 +383,9 @@ export type SimulatorTradeUpdateInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   account?: Prisma.SimulatorAccountUpdateOneRequiredWithoutTradesNestedInput
 }
@@ -364,7 +398,9 @@ export type SimulatorTradeUncheckedUpdateInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -376,7 +412,9 @@ export type SimulatorTradeCreateManyInput = {
   quantity: number
   price: number
   stopLoss?: number | null
+  takeProfit?: number | null
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: Date | string
 }
 
@@ -387,7 +425,9 @@ export type SimulatorTradeUpdateManyMutationInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -399,7 +439,9 @@ export type SimulatorTradeUncheckedUpdateManyInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -421,7 +463,9 @@ export type SimulatorTradeCountOrderByAggregateInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrder
+  takeProfit?: Prisma.SortOrder
   autoStopLoss?: Prisma.SortOrder
+  autoTakeProfit?: Prisma.SortOrder
   timestamp?: Prisma.SortOrder
 }
 
@@ -429,6 +473,7 @@ export type SimulatorTradeAvgOrderByAggregateInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrder
+  takeProfit?: Prisma.SortOrder
 }
 
 export type SimulatorTradeMaxOrderByAggregateInput = {
@@ -439,7 +484,9 @@ export type SimulatorTradeMaxOrderByAggregateInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrder
+  takeProfit?: Prisma.SortOrder
   autoStopLoss?: Prisma.SortOrder
+  autoTakeProfit?: Prisma.SortOrder
   timestamp?: Prisma.SortOrder
 }
 
@@ -451,7 +498,9 @@ export type SimulatorTradeMinOrderByAggregateInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrder
+  takeProfit?: Prisma.SortOrder
   autoStopLoss?: Prisma.SortOrder
+  autoTakeProfit?: Prisma.SortOrder
   timestamp?: Prisma.SortOrder
 }
 
@@ -459,6 +508,7 @@ export type SimulatorTradeSumOrderByAggregateInput = {
   quantity?: Prisma.SortOrder
   price?: Prisma.SortOrder
   stopLoss?: Prisma.SortOrder
+  takeProfit?: Prisma.SortOrder
 }
 
 export type SimulatorTradeCreateNestedManyWithoutAccountInput = {
@@ -514,7 +564,9 @@ export type SimulatorTradeCreateWithoutAccountInput = {
   quantity: number
   price: number
   stopLoss?: number | null
+  takeProfit?: number | null
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: Date | string
 }
 
@@ -525,7 +577,9 @@ export type SimulatorTradeUncheckedCreateWithoutAccountInput = {
   quantity: number
   price: number
   stopLoss?: number | null
+  takeProfit?: number | null
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: Date | string
 }
 
@@ -566,7 +620,9 @@ export type SimulatorTradeScalarWhereInput = {
   quantity?: Prisma.FloatFilter<"SimulatorTrade"> | number
   price?: Prisma.FloatFilter<"SimulatorTrade"> | number
   stopLoss?: Prisma.FloatNullableFilter<"SimulatorTrade"> | number | null
+  takeProfit?: Prisma.FloatNullableFilter<"SimulatorTrade"> | number | null
   autoStopLoss?: Prisma.BoolFilter<"SimulatorTrade"> | boolean
+  autoTakeProfit?: Prisma.BoolFilter<"SimulatorTrade"> | boolean
   timestamp?: Prisma.DateTimeFilter<"SimulatorTrade"> | Date | string
 }
 
@@ -577,7 +633,9 @@ export type SimulatorTradeCreateManyAccountInput = {
   quantity: number
   price: number
   stopLoss?: number | null
+  takeProfit?: number | null
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: Date | string
 }
 
@@ -588,7 +646,9 @@ export type SimulatorTradeUpdateWithoutAccountInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -599,7 +659,9 @@ export type SimulatorTradeUncheckedUpdateWithoutAccountInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -610,7 +672,9 @@ export type SimulatorTradeUncheckedUpdateManyWithoutAccountInput = {
   quantity?: Prisma.FloatFieldUpdateOperationsInput | number
   price?: Prisma.FloatFieldUpdateOperationsInput | number
   stopLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  takeProfit?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   autoStopLoss?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  autoTakeProfit?: Prisma.BoolFieldUpdateOperationsInput | boolean
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -624,7 +688,9 @@ export type SimulatorTradeSelect<ExtArgs extends runtime.Types.Extensions.Intern
   quantity?: boolean
   price?: boolean
   stopLoss?: boolean
+  takeProfit?: boolean
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: boolean
   account?: boolean | Prisma.SimulatorAccountDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["simulatorTrade"]>
@@ -637,7 +703,9 @@ export type SimulatorTradeSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   quantity?: boolean
   price?: boolean
   stopLoss?: boolean
+  takeProfit?: boolean
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: boolean
   account?: boolean | Prisma.SimulatorAccountDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["simulatorTrade"]>
@@ -650,7 +718,9 @@ export type SimulatorTradeSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   quantity?: boolean
   price?: boolean
   stopLoss?: boolean
+  takeProfit?: boolean
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: boolean
   account?: boolean | Prisma.SimulatorAccountDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["simulatorTrade"]>
@@ -663,11 +733,13 @@ export type SimulatorTradeSelectScalar = {
   quantity?: boolean
   price?: boolean
   stopLoss?: boolean
+  takeProfit?: boolean
   autoStopLoss?: boolean
+  autoTakeProfit?: boolean
   timestamp?: boolean
 }
 
-export type SimulatorTradeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "accountId" | "ticker" | "action" | "quantity" | "price" | "stopLoss" | "autoStopLoss" | "timestamp", ExtArgs["result"]["simulatorTrade"]>
+export type SimulatorTradeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "accountId" | "ticker" | "action" | "quantity" | "price" | "stopLoss" | "takeProfit" | "autoStopLoss" | "autoTakeProfit" | "timestamp", ExtArgs["result"]["simulatorTrade"]>
 export type SimulatorTradeInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   account?: boolean | Prisma.SimulatorAccountDefaultArgs<ExtArgs>
 }
@@ -691,7 +763,9 @@ export type $SimulatorTradePayload<ExtArgs extends runtime.Types.Extensions.Inte
     quantity: number
     price: number
     stopLoss: number | null
+    takeProfit: number | null
     autoStopLoss: boolean
+    autoTakeProfit: boolean
     timestamp: Date
   }, ExtArgs["result"]["simulatorTrade"]>
   composites: {}
@@ -1124,7 +1198,9 @@ export interface SimulatorTradeFieldRefs {
   readonly quantity: Prisma.FieldRef<"SimulatorTrade", 'Float'>
   readonly price: Prisma.FieldRef<"SimulatorTrade", 'Float'>
   readonly stopLoss: Prisma.FieldRef<"SimulatorTrade", 'Float'>
+  readonly takeProfit: Prisma.FieldRef<"SimulatorTrade", 'Float'>
   readonly autoStopLoss: Prisma.FieldRef<"SimulatorTrade", 'Boolean'>
+  readonly autoTakeProfit: Prisma.FieldRef<"SimulatorTrade", 'Boolean'>
   readonly timestamp: Prisma.FieldRef<"SimulatorTrade", 'DateTime'>
 }
     

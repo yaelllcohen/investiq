@@ -63,6 +63,7 @@ export const tradeSchema = z.object({
   action: z.enum(['buy', 'sell']),
   quantity: z.number().positive().max(1_000_000),
   stopLoss: z.number().positive().max(10_000_000).optional(),
+  takeProfit: z.number().positive().max(10_000_000).optional(),
 })
 
 export const watchlistSchema = z.object({

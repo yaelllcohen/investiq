@@ -63,17 +63,6 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
           enable_publishing: false,
           hide_side_toolbar: false,
           allow_symbol_change: true,
-          studies: [
-            'Volume@tv-basicstudies',
-            'MASimple@tv-basicstudies',
-            'MAExp@tv-basicstudies',
-          ],
-          studies_overrides: {
-            'moving average.length': 200,
-            'moving average.plot.color': '#3b82f6',
-            'moving average exponential.length': 8,
-            'moving average exponential.plot.color': '#f97316',
-          },
         })
         setLoading(false)
       })

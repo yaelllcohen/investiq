@@ -233,7 +233,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [chartType, setChartType]         = useState<ChartType>('נרות')
-  const [timeRange, setTimeRange]         = useState<TimeRange>('3M')
+  const [timeRange, setTimeRange]         = useState<TimeRange>('1D')
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set())
   const [loading, setLoading]             = useState(true)
   const [chartData, setChartData]         = useState<ChartData[]>([])
@@ -557,6 +557,7 @@ export default function StockChart({ ticker, currentPrice }: { ticker: string; c
     }
 
     chart.timeScale().fitContent()
+    chart.timeScale().scrollToRealTime()
 
     const obs = new ResizeObserver(() => {
       if (containerRef.current && chartRef.current) chartRef.current.applyOptions({ width: containerRef.current.clientWidth })

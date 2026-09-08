@@ -9,7 +9,9 @@ export interface TradeRow {
   quantity: number
   price: number
   stopLoss: number | null
+  takeProfit: number | null
   autoStopLoss: boolean
+  autoTakeProfit: boolean
   timestamp: Date
 }
 
@@ -36,13 +38,21 @@ export function computeAvgPrice(trades: TradeRow[], ticker: string) {
   return qty > 0 ? total / qty : 0
 }
 
-// Latest buy trade (by timestamp) for this ticker that has a stop-loss set —
-// that's the position's currently-active stop.
-export function computeActiveStopLoss(trades: TradeRow[], ticker: string): number | null {
-  const buysWithStop = trades
-    .filter(t => t.ticker === ticker && t.action === 'buy' && t.stopLoss != null)
+// Latest buy trade (by timestamp) for this ticker that has the given field
+// set — that's the position's currently-active stop-loss / take-profit.
+function computeActiveThreshold(trades: TradeRow[], ticker: string, field: 'stopLoss' | 'takeProfit'): number | null {
+  const buysWithValue = trades
+    .filter(t => t.ticker === ticker && t.action === 'buy' && t[field] != null)
     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-  return buysWithStop[0]?.stopLoss ?? null
+  return buysWithValue[0]?.[field] ?? null
+}
+
+export function computeActiveStopLoss(trades: TradeRow[], ticker: string): number | null {
+  return computeActiveThreshold(trades, ticker, 'stopLoss')
+}
+
+export function computeActiveTakeProfit(trades: TradeRow[], ticker: string): number | null {
+  return computeActiveThreshold(trades, ticker, 'takeProfit')
 }
 
 async function fetchPrice(ticker: string, cache: Map<string, number | null>): Promise<number | null> {
@@ -56,9 +66,10 @@ async function fetchPrice(ticker: string, cache: Map<string, number | null>): Pr
   return price
 }
 
-// Checks every open position's stop-loss against a live quote and auto-sells
-// (persisting a real SimulatorTrade) any that have breached it.
-async function checkStopLosses(account: AccountRow, quoteCache: Map<string, number | null>): Promise<AccountRow> {
+// Checks every open position's stop-loss and take-profit against a live quote
+// and auto-sells (persisting a real SimulatorTrade) any that have breached
+// either threshold.
+async function checkAutoTriggers(account: AccountRow, quoteCache: Map<string, number | null>): Promise<AccountRow> {
   const holdings = computeHoldings(account.trades)
   let trades = account.trades
   let balance = account.balance
@@ -66,15 +77,23 @@ async function checkStopLosses(account: AccountRow, quoteCache: Map<string, numb
   for (const [ticker, qty] of Object.entries(holdings)) {
     if (qty <= 0) continue
     const stopLoss = computeActiveStopLoss(trades, ticker)
-    if (stopLoss == null) continue
+    const takeProfit = computeActiveTakeProfit(trades, ticker)
+    if (stopLoss == null && takeProfit == null) continue
 
     const currentPrice = await fetchPrice(ticker, quoteCache)
-    if (currentPrice == null || currentPrice >= stopLoss) continue
+    if (currentPrice == null) continue
+
+    const stopHit = stopLoss != null && currentPrice < stopLoss
+    const profitHit = !stopHit && takeProfit != null && currentPrice >= takeProfit
+    if (!stopHit && !profitHit) continue
 
     const sellTrade = await prisma.simulatorTrade.create({
       data: {
-        accountId: account.id, ticker, action: 'sell', quantity: qty,
-        price: currentPrice, stopLoss, autoStopLoss: true,
+        accountId: account.id, ticker, action: 'sell', quantity: qty, price: currentPrice,
+        stopLoss: stopHit ? stopLoss : null,
+        autoStopLoss: stopHit,
+        takeProfit: profitHit ? takeProfit : null,
+        autoTakeProfit: profitHit,
       },
     })
     balance += currentPrice * qty
@@ -88,11 +107,12 @@ async function checkStopLosses(account: AccountRow, quoteCache: Map<string, numb
 }
 
 // Builds the full simulator state payload (balance + enriched holdings +
-// trade history) — checking and executing any breached stop-losses first.
-// Used by GET, POST, and reset so the client always receives a consistent shape.
+// trade history) — checking and executing any breached stop-loss/take-profit
+// first. Used by GET, POST, and reset so the client always receives a
+// consistent shape.
 export async function buildAccountPayload(account: AccountRow) {
   const quoteCache = new Map<string, number | null>()
-  const checked = await checkStopLosses(account, quoteCache)
+  const checked = await checkAutoTriggers(account, quoteCache)
 
   const tradesOut = checked.trades.map(t => ({
     id: t.id,
@@ -103,7 +123,9 @@ export async function buildAccountPayload(account: AccountRow) {
     price: t.price,
     total: t.action === 'buy' ? -(t.price * t.quantity) : t.price * t.quantity,
     stopLoss: t.stopLoss,
+    takeProfit: t.takeProfit,
     autoStopLoss: t.autoStopLoss,
+    autoTakeProfit: t.autoTakeProfit,
   }))
 
   const holdings = computeHoldings(checked.trades)
@@ -113,11 +135,12 @@ export async function buildAccountPayload(account: AccountRow) {
       .map(async ([ticker, qty]) => {
         const avgPrice = computeAvgPrice(checked.trades, ticker)
         const stopLoss = computeActiveStopLoss(checked.trades, ticker)
+        const takeProfit = computeActiveTakeProfit(checked.trades, ticker)
         const fetchedPrice = await fetchPrice(ticker, quoteCache)
         const currentPrice = fetchedPrice ?? avgPrice
         const pl = (currentPrice - avgPrice) * qty
         const plPercent = avgPrice > 0 ? ((currentPrice - avgPrice) / avgPrice) * 100 : 0
-        return { ticker, quantity: qty, avgPrice, currentPrice, stopLoss, pl, plPercent }
+        return { ticker, quantity: qty, avgPrice, currentPrice, stopLoss, takeProfit, pl, plPercent }
       })
   )
 
