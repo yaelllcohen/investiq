@@ -24,12 +24,12 @@ import { X, Bot, Loader2, CheckCircle, Sparkles } from 'lucide-react'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ChartData = { date: string; open: number; high: number; low: number; close: number; volume: number }
-type TimeRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | 'MAX'
+type TimeRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y'
 type ChartType = 'candles' | 'ohlc' | 'line' | 'area' | 'baseline'
 type IndicatorKey = 'ema8' | 'sma200' | 'ema20' | 'sma50' | 'rsi' | 'bb'
 type LevelType = 'entry' | 'stop' | 'target'
 
-const TIME_RANGES: TimeRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'MAX']
+const TIME_RANGES: TimeRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y']
 
 const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: 'candles',  label: 'נרות' },
@@ -39,30 +39,25 @@ const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: 'baseline', label: 'Baseline' },
 ]
 
-// Each TimeRange has its own candle size + lookback window. Ranges that
-// happen to fetch the exact same interval+range ("tier") — currently only
-// 5Y and MAX, both monthly/all-time — share a single fetch; switching
-// between them never refetches or rebuilds the chart, it only adjusts the
-// visible window (see selectTimeRange below). `mergeEvery`, when set,
-// combines that many consecutive fetched candles into one wider candle
-// (used for 6M, which is built from merged 3-month bars) before display.
-const TIER_MAP: Record<TimeRange, {
-  tierKey: string; range: string; interval: string; focusBars: number
-  mergeEvery?: number; candleLabel: string
-}> = {
-  '1D':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: Infinity, candleLabel: 'נר יומי' },
-  '1W':  { tierKey: 'w-2y',   range: '2y',  interval: '1wk', focusBars: Infinity, candleLabel: 'נר שבועי' },
-  '1M':  { tierKey: 'm-5y',   range: '5y',  interval: '1mo', focusBars: Infinity, candleLabel: 'נר חודשי' },
-  '3M':  { tierKey: 'q-5y',   range: '5y',  interval: '3mo', focusBars: Infinity, candleLabel: 'נר רבעוני' },
-  '6M':  { tierKey: 'q-10y-h2', range: '10y', interval: '3mo', mergeEvery: 2, focusBars: Infinity, candleLabel: 'נר חצי שנתי' },
-  '1Y':  { tierKey: 'm-10y',  range: '10y', interval: '1mo', focusBars: Infinity, candleLabel: 'נר חודשי' },
-  '5Y':  { tierKey: 'm-max',  range: 'max', interval: '1mo', focusBars: 60,       candleLabel: 'נר חודשי' },
-  'MAX': { tierKey: 'm-max',  range: 'max', interval: '1mo', focusBars: Infinity, candleLabel: 'נר חודשי' },
+// Each TimeRange is just a candle size — every range fetches the maximum
+// history Yahoo Finance has, at that candle size, and the chart always
+// fitContent()s to show all of it. `mergeEvery`, when set, combines that
+// many consecutive fetched candles into one wider candle (Yahoo has no
+// native 6-month/1-year/5-year interval, so those are built by merging
+// fetched 3-month/monthly bars).
+const TIER_MAP: Record<TimeRange, { interval: string; mergeEvery?: number; candleLabel: string }> = {
+  '1D': { interval: '1d',  candleLabel: 'נר יומי' },
+  '1W': { interval: '1wk', candleLabel: 'נר שבועי' },
+  '1M': { interval: '1mo', candleLabel: 'נר חודשי' },
+  '3M': { interval: '3mo', candleLabel: 'נר רבעוני' },
+  '6M': { interval: '3mo', mergeEvery: 2,  candleLabel: 'נר חצי שנתי' },
+  '1Y': { interval: '1mo', mergeEvery: 12, candleLabel: 'נר שנתי' },
+  '5Y': { interval: '1mo', mergeEvery: 60, candleLabel: 'נר 5 שנים' },
 }
 
 // Combines every `n` consecutive candles into one wider candle (open of the
 // first, close of the last, high/low across all, volume summed) — used to
-// build the 6M range's half-year candles out of fetched 3-month bars.
+// build the 6M/1Y/5Y ranges out of fetched 3-month/monthly bars.
 function mergeBars(rows: ChartData[], n: number): ChartData[] {
   const out: ChartData[] = []
   for (let i = 0; i < rows.length; i += n) {
@@ -78,14 +73,6 @@ function mergeBars(rows: ChartData[], n: number): ChartData[] {
     })
   }
   return out
-}
-
-// Sets the chart's visible window to the last `n` bars of a `total`-bar
-// series (with a little right padding), or shows everything when n is not
-// finite or already covers the whole dataset.
-function focusLastNBars(chart: IChartApi, total: number, n: number) {
-  if (!isFinite(n) || n >= total) { chart.timeScale().fitContent(); return }
-  chart.timeScale().setVisibleLogicalRange({ from: total - n, to: total - 1 + 2 })
 }
 
 const IND_META: Record<IndicatorKey, { label: string; color: string }> = {
@@ -258,7 +245,6 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
   const chartDataRef      = useRef<ChartData[]>([])
   const indicatorDataRef  = useRef<ChartData[]>([])
   const activeIndicatorsRef = useRef<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
-  const timeRangeRef = useRef<TimeRange>('3M')
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [timeRange, setTimeRange]     = useState<TimeRange>('3M')
@@ -396,27 +382,11 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
     })
   }, [addRsiPane, removeRsiPane])
 
-  // ── Select a time range — imperative zoom when it shares a tier with the ──
-  // currently-loaded data (no refetch, no rebuild); otherwise just updates
-  // state and lets the main effect's tierKey dependency handle refetching.
-  const selectTimeRange = useCallback((next: TimeRange) => {
-    const sameTier = TIER_MAP[timeRangeRef.current].tierKey === TIER_MAP[next].tierKey
-    timeRangeRef.current = next
-    setTimeRange(next)
-    if (sameTier && chartRef.current && chartDataRef.current.length > 0) {
-      focusLastNBars(chartRef.current, chartDataRef.current.length, TIER_MAP[next].focusBars)
-    }
-  }, [])
-
-  // Ranges sharing a tierKey share a fetch — this is what the chart-owning
-  // effect actually depends on, not the raw timeRange (see selectTimeRange).
-  const tierKey = TIER_MAP[timeRange].tierKey
-
   // ── Build & own the ENTIRE chart lifecycle ────────────────────────────────────
-  // The only effect that ever touches the Lightweight Charts instance.
-  // Refetches + rebuilds when ticker or tierKey change — NOT on every
-  // timeRange change, since ranges sharing a tier reuse the same data (see
-  // selectTimeRange). Indicator toggles and level placement are handled by
+  // The only effect that ever touches the Lightweight Charts instance. Fully
+  // refetches + rebuilds on ticker/timeRange change (every range is its own
+  // candle size fetched at Yahoo's max history, so there's no sharing between
+  // ranges to preserve); indicator toggles and level placement are handled by
   // the imperative callbacks above instead of re-running this effect.
   useEffect(() => {
     if (!containerRef.current) return
@@ -427,10 +397,10 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
     const tip = document.createElement('div')
 
     setLoading(true)
-    const { range, interval, mergeEvery } = TIER_MAP[timeRangeRef.current]
+    const { interval, mergeEvery } = TIER_MAP[timeRange]
 
     Promise.all([
-      fetch(`/api/stock/${ticker}/history?range=${range}&interval=${interval}`).then(r => r.json()),
+      fetch(`/api/stock/${ticker}/history?range=max&interval=${interval}`).then(r => r.json()),
       fetch(`/api/stock/${ticker}/history?range=1y&interval=1d`).then(r => r.json()),
       fetch(`/api/chart-levels/${ticker}`)
         .then(r => (r.ok ? r.json() : { entry: null, stop: null, target: null }))
@@ -463,8 +433,8 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           rightPriceScale: { borderColor: '#1e293b' },
           timeScale: {
             borderColor: '#1e293b', timeVisible: true, secondsVisible: false,
-            barSpacing: 12,
-            minBarSpacing: 8,
+            barSpacing: 8,
+            minBarSpacing: 4,
           },
         })
         chartRef.current = chart
@@ -608,11 +578,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         resizeObs.observe(container)
 
-        // Focus the view on the selected range's own bar count, right-aligned
-        // — never fitContent() to the full tier fetch (up to 10y of data).
-        // fitContent() is only ever used as focusLastNBars()'s fallback when
-        // the requested window covers the whole fetched dataset (e.g. MAX).
-        focusLastNBars(chart, rows.length, TIER_MAP[timeRangeRef.current].focusBars)
+        chart.timeScale().fitContent()
       })
       .catch(() => {
         if (!dead) { setHasData(false); setLoading(false) }
@@ -631,7 +597,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
       indSeriesRef.current.clear()
       priceLinesRef.current.clear()
     }
-  }, [ticker, tierKey, chartType, applyLevel, drawPriceLine, addRsiPane])
+  }, [ticker, timeRange, chartType, applyLevel, drawPriceLine, addRsiPane])
 
   // ── AI recommendation ──────────────────────────────────────────────────────
   const fetchAiLevels = useCallback(() => {
@@ -727,7 +693,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 overflow-x-auto scrollbar-none">
         <div className="flex gap-0.5 flex-shrink-0">
           {TIME_RANGES.map(r => (
-            <button key={r} onClick={() => selectTimeRange(r)}
+            <button key={r} onClick={() => setTimeRange(r)}
               className="px-2.5 py-1 rounded text-xs font-medium transition-colors focus:outline-none"
               style={timeRange === r
                 ? { background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid #3b82f6' }
