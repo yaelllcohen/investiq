@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
 
 type Difficulty = 'מתחיל' | 'בינוני' | 'מתקדם'
+type PatternType = 'המשך' | 'היפוך'
 
 interface SwingPattern {
   id: string
@@ -12,6 +13,7 @@ interface SwingPattern {
   nameEn: string
   difficulty: Difficulty
   bias: 'bullish' | 'bearish' | 'neutral'
+  patternType?: PatternType
   meaning: string
   whenToUse: string
   entry: string
@@ -131,6 +133,90 @@ const PATTERNS: SwingPattern[] = [
     target: 'הקצה הנגדי של הטווח, או המשך המגמה לאחר פריצה.',
     invalidation: 'סגירת נר ברורה מעבר לרמה — במיוחד בנפח גבוה — מבטלת את הרמה כתקפה.',
   },
+  {
+    id: 'breakout_pattern',
+    nameHe: 'תבנית פריצה',
+    nameEn: 'Breakout Pattern',
+    difficulty: 'מתחיל',
+    bias: 'bullish',
+    patternType: 'המשך',
+    meaning: 'מחיר שנע בטווח מסחר מוגדר לאורך זמן פורץ בעוצמה מעל רמת ההתנגדות העליונה תוך זינוק חד בנפח המסחר — סימן לכניסת קונים חדשים וכוח אמיתי מאחורי התנועה.',
+    whenToUse: 'כשמניה נצמדת לרמת התנגדות ברורה עם מספר נגיעות חוזרות, והנפח היומי מתחיל לעלות בהדרגה לקראת הפריצה.',
+    entry: 'קנייה מיד עם סגירת נר מעל רמת ההתנגדות, כאשר הנפח גבוה לפחות פי 1.5–2 מהממוצע היומי.',
+    stop: 'מתחת לרמת ההתנגדות שנפרצה (ההופכת לתמיכה חדשה), או מתחת לשפל הנר הפורץ.',
+    target: 'מרחק שווה לטווח המסחר שקדם לפריצה (High−Low של הטווח), מוסף לנקודת הפריצה.',
+    invalidation: 'חזרה מתחת לרמת הפריצה תוך יום-יומיים ("פריצת שווא"), או פריצה בנפח נמוך — מבטלות את האיתות.',
+  },
+  {
+    id: 'breakdown_pattern',
+    nameHe: 'תבנית שבירה',
+    nameEn: 'Breakdown Pattern',
+    difficulty: 'מתחיל',
+    bias: 'bearish',
+    patternType: 'המשך',
+    meaning: 'התמונה ההפוכה של פריצה — המחיר שובר כלפי מטה רמת תמיכה מרכזית בליווי עלייה בנפח, מה שמעיד על לחץ מכירה חזק ותחילת תנועה יורדת.',
+    whenToUse: 'כשמניה נסחרת בטווח או במגמת עלייה מתפוגגת, רמת תמיכה ברורה בסיכון, ומופיעים סימני היחלשות במומנטום (RSI יורד, נפח קנייה נמוך).',
+    entry: 'מכירה/סגירת פוזיציה מיד עם סגירת נר מתחת לרמת התמיכה, רצוי בנפח גבוה מהממוצע.',
+    stop: 'מעל רמת התמיכה שנשברה (ההופכת להתנגדות חדשה).',
+    target: 'מרחק שווה לטווח המסחר שקדם לשבירה, מופחת מנקודת השבירה.',
+    invalidation: 'חזרה מעל רמת השבירה תוך יום-יומיים ("שבירת שווא") מבטלת את האיתות.',
+  },
+  {
+    id: 'consolidation_pattern',
+    nameHe: 'תבנית התכנסות',
+    nameEn: 'Consolidation Pattern',
+    difficulty: 'בינוני',
+    bias: 'neutral',
+    patternType: 'המשך',
+    meaning: 'המחיר נע בטווח צר יחסית ללא כיוון ברור, לרוב אחרי תנועה חדה — "תקופת עיכול" שבה השוק אוסף כוח לפני המהלך הבא.',
+    whenToUse: 'אחרי מהלך חד (עלייה או ירידה), כשהתנודתיות מצטמצמת בבירור ונפח המסחר יורד — סימן שהשוק ממתין לזרז חדש.',
+    entry: 'פריצה מעל גבול ההתכנסות העליון (לכיוון עולה) או מתחת לגבול התחתון (לכיוון יורד), רצוי עם עלייה בנפח.',
+    stop: 'מהצד הנגדי של טווח ההתכנסות — מתחת לגבול התחתון בפריצה עולה, מעל הגבול העליון בפריצה יורדת.',
+    target: 'רוחב טווח ההתכנסות מוסף (או מופחת) מנקודת הפריצה.',
+    invalidation: 'המשך תנועה צידית ממושכת ללא פריצה ברורה מפחית את מהימנות התבנית; פריצת שווא לכל כיוון מבטלת את האיתות.',
+  },
+  {
+    id: 'wedge_breakout',
+    nameHe: 'טריז עולה עם פריצה',
+    nameEn: 'Wedge Breakout',
+    difficulty: 'בינוני',
+    bias: 'bullish',
+    patternType: 'המשך',
+    meaning: 'שני קווי מגמה עולים שמתכנסים זה לזה ("טריז"), ולבסוף המחיר פורץ כלפי מעלה מתוך ההתכנסות — שילוב של לחץ קנייה מצטבר ופריצה חדה.',
+    whenToUse: 'בתוך מגמת עלייה, כשהמחיר יוצר סדרת שיאים ושפלים עולים המתכנסים בהדרגה לכיוון קו התנגדות אחד.',
+    entry: 'פריצה מעל הקו העליון של הטריז, רצוי בנפח גבוה מהממוצע.',
+    stop: 'מתחת לנגיעה האחרונה בקו התמיכה העולה של הטריז, לפני הפריצה.',
+    target: 'גובה הבסיס הרחב של הטריז (בתחילת התבנית) מוסף לנקודת הפריצה.',
+    invalidation: 'שבירה מתחת לקו התמיכה התחתון של הטריז לפני פריצת ההתנגדות מבטלת את התבנית.',
+  },
+  {
+    id: 'downtrend_break',
+    nameHe: 'שבירת מגמת ירידה ארוכת טווח',
+    nameEn: 'Long Term Downtrend Break',
+    difficulty: 'מתקדם',
+    bias: 'bullish',
+    patternType: 'היפוך',
+    meaning: 'היפוך מגמה משמעותי — לאחר תקופה ממושכת של ירידות ושפלים יורדים, המחיר שובר קו מגמה יורד ארוך טווח ועובר מעל ממוצע נע ארוך (כמו SMA200), מה שמעיד על שינוי אופי בסיסי.',
+    whenToUse: 'בסוף מגמת ירידה ממושכת (חודשים), כשמופיעים סימני היחלשות במומנטום היורד (RSI לא עושה שפל חדש, נפח מכירות פוחת) והמחיר מתקרב לקו המגמה או ל-SMA200.',
+    entry: 'פריצה וסגירה מעל קו המגמה היורד וגם מעל SMA200, רצוי בליווי נפח קנייה גבוה מהממוצע.',
+    stop: 'מתחת לשפל האחרון שנוצר לפני הפריצה, או מתחת ל-SMA200 אם המחיר נשבר בחזרה מתחתיו.',
+    target: 'רמת ההתנגדות המשמעותית הבאה, או מרחק דומה לגודל התיקונים הקודמים בתוך המגמה היורדת.',
+    invalidation: 'חזרה מתחת לקו המגמה היורד או ל-SMA200 תוך זמן קצר מבטלת את איתות ההיפוך.',
+  },
+  {
+    id: 'oversold_pattern',
+    nameHe: 'תבנית מכורת יתר',
+    nameEn: 'Oversold Chart Pattern',
+    difficulty: 'בינוני',
+    bias: 'bullish',
+    patternType: 'היפוך',
+    meaning: 'מניה שירדה בחדות וה-RSI שלה נמצא באזור מכירת יתר (מתחת ל-30), ומופיע סימן ראשוני להיפוך — כמו נר היפוך (Hammer/Doji), התכנסות בנפח המכירות, או דיברגנס חיובי ב-RSI.',
+    whenToUse: 'לאחר ירידה חדה וממושכת, כש-RSI נמצא מתחת ל-30 ומופיע נר עצירה ברור (למשל Hammer) בליווי ירידה בנפח המכירות.',
+    entry: 'קנייה בסגירת הנר ההיפוכי, או בפריצה מעל השיא של אותו נר, רצוי עם אישור נפח.',
+    stop: 'מתחת לשפל שנוצר בעת מכירת היתר (השפל של הנר ההיפוכי או הנר שלפניו).',
+    target: 'רמת התנגדות קרובה, או ממוצע נע קצר (כמו EMA8) שהמחיר לא נגע בו זמן רב.',
+    invalidation: 'שפל חדש ונמוך יותר מתחת לשפל מכירת היתר, ללא סימני היפוך — מבטל את האיתות ומעיד על המשך הירידה.',
+  },
 ]
 
 // ─── SVG illustrations ────────────────────────────────────────────────────────
@@ -140,6 +226,15 @@ function PatternSvg({ id }: { id: string }) {
   const GUIDE = '#f59e0b'
   const UP = '#22c55e'
   const DOWN = '#ef4444'
+
+  // The 6 indicator-overlay patterns below draw the price line in neutral
+  // gray (so it doesn't compete with the indicators) plus an orange EMA8
+  // and a blue SMA200 line — matching the exact colors used for these two
+  // indicators on the advanced chart (see IND_META in stock-chart.tsx).
+  const NEUTRAL = '#cbd5e1'
+  const EMA8 = '#f97316'
+  const SMA200 = '#3b82f6'
+  const STRUCT_GUIDE = '#64748b'
 
   const common = { viewBox: '0 0 320 150', className: 'w-full h-auto' }
 
@@ -209,6 +304,79 @@ function PatternSvg({ id }: { id: string }) {
           <polyline points="220,80 260,42 300,15" fill="none" stroke={UP} strokeWidth="3" strokeLinecap="round" />
         </svg>
       )
+    case 'breakout_pattern':
+      return (
+        <svg {...common}>
+          <line x1="50" y1="55" x2="205" y2="55" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <polyline points="15,105 50,65 72,55 95,88 118,55 140,85 162,55 185,82 205,58" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="205,58 235,38 265,20 300,8" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="15,100 90,97 160,93 230,82 300,60" fill="none" stroke={SMA200} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="15,110 50,90 85,78 120,72 155,68 185,62 205,55 235,42 265,25 300,12" fill="none" stroke={EMA8} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="185" cy="82" r="4" fill={UP} />
+          <circle cx="162" cy="55" r="4" fill={DOWN} />
+        </svg>
+      )
+    case 'breakdown_pattern':
+      return (
+        <svg {...common}>
+          <line x1="40" y1="90" x2="205" y2="90" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <polyline points="15,40 40,75 65,90 90,55 112,90 135,60 158,90 180,65 205,88" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="205,88 235,108 265,125 300,140" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="15,50 90,55 160,60 230,70 300,90" fill="none" stroke={SMA200} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="15,35 40,60 75,72 110,68 145,72 180,78 205,88 235,105 265,122 300,135" fill="none" stroke={EMA8} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="158" cy="90" r="4" fill={UP} />
+          <circle cx="205" cy="88" r="4" fill={DOWN} />
+        </svg>
+      )
+    case 'consolidation_pattern':
+      return (
+        <svg {...common}>
+          <line x1="40" y1="50" x2="240" y2="50" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <line x1="40" y1="95" x2="240" y2="95" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <polyline points="15,75 45,55 70,90 95,58 120,88 145,60 170,86 195,62 220,84 240,66" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="240,66 270,35 300,12" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="15,72 90,73 170,74 240,72 300,55" fill="none" stroke={SMA200} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="15,78 60,68 100,72 140,70 180,72 220,68 250,55 280,30 300,15" fill="none" stroke={EMA8} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="170" cy="86" r="4" fill={UP} />
+          <circle cx="195" cy="62" r="4" fill={DOWN} />
+        </svg>
+      )
+    case 'wedge_breakout':
+      return (
+        <svg {...common}>
+          <line x1="20" y1="45" x2="230" y2="20" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <line x1="20" y1="130" x2="230" y2="45" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <polyline points="20,130 55,70 55,45 90,105 90,80 125,55 125,35 160,68 160,50 195,30 195,22" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="195,22 235,10 270,4 300,2" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="20,120 90,110 160,95 230,70 300,40" fill="none" stroke={SMA200} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="20,125 60,95 100,80 140,60 180,42 220,25 260,12 300,5" fill="none" stroke={EMA8} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="90" cy="105" r="4" fill={UP} />
+          <circle cx="125" cy="35" r="4" fill={DOWN} />
+        </svg>
+      )
+    case 'downtrend_break':
+      return (
+        <svg {...common}>
+          <line x1="15" y1="20" x2="220" y2="95" stroke={STRUCT_GUIDE} strokeWidth="1.5" strokeDasharray="4 3" />
+          <polyline points="15,25 45,45 75,58 105,80 135,90 165,100 195,105 220,98" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="220,98 250,75 280,50 300,30" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="15,15 60,20 105,32 150,50 195,68 230,72 260,60 300,42" fill="none" stroke={SMA200} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="15,22 45,40 75,55 105,78 135,92 165,103 195,108 220,95 250,68 280,42 300,22" fill="none" stroke={EMA8} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="220" cy="98" r="4" fill={UP} />
+          <circle cx="165" cy="100" r="4" fill={DOWN} />
+        </svg>
+      )
+    case 'oversold_pattern':
+      return (
+        <svg {...common}>
+          <polyline points="15,15 45,35 75,55 100,75 120,100 138,122 150,132" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="150,132 170,120 190,100 215,90 245,72 275,58 300,48" fill="none" stroke={NEUTRAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="15,10 80,18 140,35 200,55 260,68 300,72" fill="none" stroke={SMA200} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="15,12 45,30 75,50 100,72 120,98 138,120 150,128 170,112 190,95 215,82 245,65 275,50 300,40" fill="none" stroke={EMA8} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="170" cy="112" r="4" fill={UP} />
+          <circle cx="150" cy="132" r="4.5" fill={DOWN} />
+        </svg>
+      )
     case 'support_resistance':
     default:
       return (
@@ -239,7 +407,7 @@ export default function SwingPatternsPage() {
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight" style={{ color: '#e2e8f0' }}>מדריך תבניות סווינג</h1>
         <p className="text-sm mt-1" style={{ color: '#94a3b8' }}>
-          8 תבניות מפתח בניתוח טכני — איך לזהות, מתי להיכנס, איפה לשים סטופ ומתי התבנית מתבטלת.
+          {PATTERNS.length} תבניות מפתח בניתוח טכני — איך לזהות, מתי להיכנס, איפה לשים סטופ ומתי התבנית מתבטלת.
         </p>
       </div>
 
@@ -271,7 +439,20 @@ export default function SwingPatternsPage() {
             <div className="w-full max-w-sm">
               <PatternSvg id={active.id} />
             </div>
-            <div className="flex items-center gap-2">
+            {(active.id === 'breakout_pattern' || active.id === 'breakdown_pattern' || active.id === 'consolidation_pattern' ||
+              active.id === 'wedge_breakout' || active.id === 'downtrend_break' || active.id === 'oversold_pattern') && (
+              <div className="flex items-center gap-3 text-[11px]" style={{ color: '#64748b' }}>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 rounded-full" style={{ background: '#f97316' }} />
+                  EMA 8
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 rounded-full" style={{ background: '#3b82f6' }} />
+                  SMA 200
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 flex-wrap justify-center">
               <span
                 className="text-xs font-semibold px-2.5 py-1 rounded-full"
                 style={{
@@ -281,6 +462,14 @@ export default function SwingPatternsPage() {
               >
                 {active.bias === 'bullish' ? '📈 תבנית עולה' : active.bias === 'bearish' ? '📉 תבנית יורדת' : '↔️ ניטרלי'}
               </span>
+              {active.patternType && (
+                <span
+                  className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                  style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
+                >
+                  {active.patternType === 'המשך' ? '➡️ תבנית המשך' : '🔄 תבנית היפוך'}
+                </span>
+              )}
               <span
                 className="text-xs font-semibold px-2.5 py-1 rounded-full"
                 style={{ background: DIFFICULTY_COLOR[active.difficulty] + '20', color: DIFFICULTY_COLOR[active.difficulty] }}
