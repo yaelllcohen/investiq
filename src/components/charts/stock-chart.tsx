@@ -433,8 +433,9 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           rightPriceScale: { borderColor: '#1e293b' },
           timeScale: {
             borderColor: '#1e293b', timeVisible: true, secondsVisible: false,
-            barSpacing: 8,
-            minBarSpacing: 4,
+            barSpacing: 6,
+            minBarSpacing: 3,
+            rightOffset: 5,
           },
         })
         chartRef.current = chart
@@ -578,7 +579,16 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         resizeObs.observe(container)
 
+        // fitContent() computes a dynamic bar spacing that stretches candles
+        // to fill the full container width whenever there are few bars in
+        // view (e.g. the merged 6M/1Y/5Y ranges) — re-locking to our own
+        // fixed spacing afterward, then setting an explicit logical range
+        // sized from that spacing (rather than from the total bar count),
+        // keeps candle width constant instead of letting it balloon.
         chart.timeScale().fitContent()
+        chart.timeScale().applyOptions({ barSpacing: 6, minBarSpacing: 3, rightOffset: 5 })
+        const visibleBars = Math.max(1, Math.floor(container.clientWidth / 6) - 5)
+        chart.timeScale().setVisibleLogicalRange({ from: rows.length - visibleBars, to: rows.length - 1 + 5 })
       })
       .catch(() => {
         if (!dead) { setHasData(false); setLoading(false) }
