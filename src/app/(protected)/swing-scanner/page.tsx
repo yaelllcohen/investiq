@@ -50,14 +50,15 @@ const OPEN_FILTERS: Filters = {
 const DEFAULT_FILTERS: Filters = {
   ...OPEN_FILTERS,
   changeMin: 3, marketCapMinB: 1, priceMin: 1, volumeMin: 500_000, aboveSma200: true,
+  rsiMin: 40, rsiMax: 70,
 }
 
-const PRESETS: { label: string; filters: Filters }[] = [
-  { label: 'Afterhours Scan', filters: { ...OPEN_FILTERS, priceMin: 1, volumeMin: 200_000, changeMin: 10 } },
-  { label: 'Premarket Gap Small Cap', filters: { ...OPEN_FILTERS, priceMin: 1.5, volumeMin: 200_000, gapMin: 3, marketCapMaxB: 0.8 } },
-  { label: 'Midday Scan', filters: { ...OPEN_FILTERS, priceMin: 1, volumeMin: 500_000, changeMin: 10, marketCapMaxB: 0.8 } },
-  { label: 'Midday Swing', filters: { ...OPEN_FILTERS, priceMin: 1, volumeMin: 500_000, marketCapMinB: 0.8 } },
-  { label: 'סווינג ישראלי', filters: { ...OPEN_FILTERS, aboveSma200: true, rsiMin: 40, rsiMax: 65, volumeMin: 100_000 } },
+const PRESETS: { label: string; description: string; filters: Filters }[] = [
+  { label: 'Afterhours Scan', description: 'מניות שזזו מעל 10% אחרי שעות המסחר הרגילות', filters: { ...OPEN_FILTERS, priceMin: 1, volumeMin: 200_000, changeMin: 10 } },
+  { label: 'Premarket Gap Small Cap', description: 'מניות קטנות עם גאפ מעל 3% לפני פתיחת השוק', filters: { ...OPEN_FILTERS, priceMin: 1.5, volumeMin: 200_000, gapMin: 3, marketCapMaxB: 0.8 } },
+  { label: 'Midday Scan', description: 'מניות עם תנועה חזקה באמצע יום המסחר', filters: { ...OPEN_FILTERS, priceMin: 1, volumeMin: 500_000, changeMin: 10, marketCapMaxB: 0.8 } },
+  { label: 'Midday Swing', description: 'מניות גדולות (Large Cap) עם מומנטום לסווינג', filters: { ...OPEN_FILTERS, priceMin: 1, volumeMin: 500_000, marketCapMinB: 0.8 } },
+  { label: 'סווינג ישראלי', description: 'מניות ישראליות מעל SMA200 עם RSI מאוזן', filters: { ...OPEN_FILTERS, aboveSma200: true, rsiMin: 40, rsiMax: 65, volumeMin: 100_000 } },
 ]
 
 function fmtCompact(n: number | null): string {
@@ -290,6 +291,7 @@ export default function SwingScannerPage() {
             <button
               key={p.label}
               onClick={() => applyPreset(p)}
+              title={p.description}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={activePreset === p.label
                 ? { background: 'rgba(99,102,241,0.2)', border: '1px solid #6366f1', color: '#818cf8' }
