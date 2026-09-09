@@ -141,20 +141,42 @@ function calcBB(data: ChartData[], p = 20, m = 2) {
 // indicatorData — a "SMA 200" means 200 DAYS regardless of the chart's own
 // displayed interval, so it needs its own always-daily, always-long-enough
 // dataset (the visible chartData is often 5-minute bars for "1D", nowhere
-// near 200 bars deep).
-function buildOverlayIndicator(chart: IChartApi, key: Exclude<IndicatorKey, 'rsi'>, data: ChartData[]): ISeriesApi<'Line'>[] {
+// near 200 bars deep). The full history is needed to COMPUTE correct values,
+// but only the portion overlapping the main series' own visible range should
+// actually be plotted — otherwise chart.timeScale().fitContent() zooms out
+// to fit the indicator line's full (up to 1-year) span instead of the
+// candles' actual range.
+function clipToRange<T extends { time: UTCTimestamp }>(points: T[], range: { from: UTCTimestamp; to: UTCTimestamp }): T[] {
+  const inRange = points.filter(p => p.time >= range.from && p.time <= range.to)
+  if (inRange.length > 0) return inRange
+  // No point falls exactly within the visible window — this is the normal
+  // case for '1D', where the indicator's daily-granularity timestamps never
+  // land inside a same-day intraday window. Fall back to a flat reference
+  // line at the most recent known value instead of rendering nothing.
+  let mostRecent: T | undefined
+  for (const p of points) { if (p.time <= range.to) mostRecent = p }
+  if (!mostRecent) return []
+  return [{ ...mostRecent, time: range.from }, { ...mostRecent, time: range.to }]
+}
+
+function buildOverlayIndicator(
+  chart: IChartApi,
+  key: Exclude<IndicatorKey, 'rsi'>,
+  data: ChartData[],
+  visibleRange: { from: UTCTimestamp; to: UTCTimestamp },
+): ISeriesApi<'Line'>[] {
   const base = { priceLineVisible: false, lastValueVisible: false }
-  if (key === 'ema8')   { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.ema8.color, lineWidth: 1 }); s.setData(calcEMA(data, 8)); return [s] }
-  if (key === 'sma200') { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.sma200.color, lineWidth: 1 }); s.setData(calcSMA(data, 200)); return [s] }
-  if (key === 'ema20')  { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.ema20.color, lineWidth: 1 }); s.setData(calcEMA(data, 20)); return [s] }
-  if (key === 'sma50')  { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.sma50.color, lineWidth: 1 }); s.setData(calcSMA(data, 50)); return [s] }
+  if (key === 'ema8')   { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.ema8.color, lineWidth: 1 }); s.setData(clipToRange(calcEMA(data, 8), visibleRange)); return [s] }
+  if (key === 'sma200') { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.sma200.color, lineWidth: 1 }); s.setData(clipToRange(calcSMA(data, 200), visibleRange)); return [s] }
+  if (key === 'ema20')  { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.ema20.color, lineWidth: 1 }); s.setData(clipToRange(calcEMA(data, 20), visibleRange)); return [s] }
+  if (key === 'sma50')  { const s = chart.addSeries(LineSeries, { ...base, color: IND_META.sma50.color, lineWidth: 1 }); s.setData(clipToRange(calcSMA(data, 50), visibleRange)); return [s] }
   if (key === 'bb') {
     const bbData = calcBB(data)
     const opts = { ...base, color: 'rgba(56,189,248,0.45)', lineWidth: 1 as const, lineStyle: LineStyle.Dotted }
     const u = chart.addSeries(LineSeries, opts)
     const l = chart.addSeries(LineSeries, opts)
-    u.setData(bbData.upper)
-    l.setData(bbData.lower)
+    u.setData(clipToRange(bbData.upper, visibleRange))
+    l.setData(clipToRange(bbData.lower, visibleRange))
     return [u, l]
   }
   return []
@@ -211,7 +233,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
   const activeIndicatorsRef = useRef<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
 
   // ── State ────────────────────────────────────────────────────────────────────
-  const [timeRange, setTimeRange]     = useState<TimeRange>('1D')
+  const [timeRange, setTimeRange]     = useState<TimeRange>('3M')
   const [chartType, setChartType]     = useState<ChartType>('candles')
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
   const [loading, setLoading]         = useState(true)
@@ -330,8 +352,12 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         if (key === 'rsi') {
           if (turningOn) addRsiPane(); else removeRsiPane()
         } else if (turningOn) {
-          const ss = buildOverlayIndicator(chart, key, indicatorDataRef.current)
-          if (ss.length) indSeriesRef.current.set(key, ss)
+          const mainRows = chartDataRef.current
+          if (mainRows.length > 0) {
+            const visibleRange = { from: toTime(mainRows[0]), to: toTime(mainRows[mainRows.length - 1]) }
+            const ss = buildOverlayIndicator(chart, key, indicatorDataRef.current, visibleRange)
+            if (ss.length) indSeriesRef.current.set(key, ss)
+          }
         } else {
           const ss = indSeriesRef.current.get(key)
           if (ss) { for (const s of ss) { try { chart.removeSeries(s) } catch { /* ignore */ } } }
@@ -391,7 +417,14 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
           crosshair: { vertLine: { color: '#334155' }, horzLine: { color: '#334155' } },
           rightPriceScale: { borderColor: '#1e293b' },
-          timeScale: { borderColor: '#1e293b', timeVisible: true, secondsVisible: false, barSpacing: 12, minBarSpacing: 8 },
+          timeScale: {
+            borderColor: '#1e293b', timeVisible: true, secondsVisible: false,
+            // 1D packs ~70-80 five-minute bars into the chart — a wider
+            // spacing there leaves too few, oversized candles. Other ranges
+            // (daily+ bars) read better at the wider spacing.
+            barSpacing: timeRange === '1D' ? 6 : 12,
+            minBarSpacing: timeRange === '1D' ? 4 : 8,
+          },
         })
         chartRef.current = chart
 
@@ -441,10 +474,11 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })))
 
         // ── Indicator overlays (pane 0), per currently-active set ──────────────
+        const mainVisibleRange = { from: toTime(rows[0]), to: toTime(rows[rows.length - 1]) }
         indSeriesRef.current.clear()
         for (const key of activeIndicatorsRef.current) {
           if (key === 'rsi') continue
-          const ss = buildOverlayIndicator(chart, key, indRows)
+          const ss = buildOverlayIndicator(chart, key, indRows, mainVisibleRange)
           if (ss.length) indSeriesRef.current.set(key, ss)
         }
 
@@ -533,13 +567,11 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         resizeObs.observe(container)
 
-        // NOT fitContent() — it fits the visible range to EVERY series on the
-        // chart, including the SMA/EMA overlays, which are computed from a
-        // full year of daily data regardless of the selected range. On '1D'
-        // that zoomed the view out to a year and squeezed the actual 1-2 days
-        // of candles into a sliver. Set the visible range explicitly to the
-        // main series' own span instead, so the candles always fill the chart.
-        chart.timeScale().setVisibleRange({ from: toTime(rows[0]), to: toTime(rows[rows.length - 1]) })
+        // fitContent() now works correctly because the indicator overlays
+        // above were clipped to mainVisibleRange — without that clip, this
+        // would zoom out to fit their full (up to 1-year) span instead of
+        // the candles' actual range.
+        chart.timeScale().fitContent()
       })
       .catch(() => {
         if (!dead) { setHasData(false); setLoading(false) }
