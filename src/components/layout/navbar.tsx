@@ -355,6 +355,12 @@ export default function Navbar({ user }: NavbarProps) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
+              <Link href="/wealth-sim" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
+                <Calculator className="h-4 w-4" />
+                סימולטור עתידי
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link href="/ai-compare" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
                 <GitCompareArrows className="h-4 w-4" />
                 השוואת AI
