@@ -70,6 +70,10 @@ function fmtCompact(n: number | null): string {
 }
 
 const IL_TZ = 'Asia/Jerusalem'
+const LS_KEY = 'swing-scanner-last-scan'
+
+const ilDateStr = (d: Date) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: IL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 
 // Mirrors the server's trading-day cache rule (Sun–Thu trading, Fri–Sat
 // weekend) to describe how fresh the currently-shown scan is.
@@ -81,10 +85,9 @@ function formatScanTime(generatedAtIso: string): string {
   const diffHours = Math.floor(diffMin / 60)
   const diffDays = Math.floor(diffMs / (24 * 3600_000))
 
-  const dateStr = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: IL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
   const timeStr = (d: Date) => d.toLocaleTimeString('he-IL', { timeZone: IL_TZ, hour: '2-digit', minute: '2-digit' })
 
-  if (dateStr(generated) === dateStr(now)) {
+  if (ilDateStr(generated) === ilDateStr(now)) {
     if (diffMin < 1) return 'נסרק זה עתה'
     if (diffMin < 60) return `נסרק לפני ${diffMin} דקות`
     return `נסרק היום בשעה ${timeStr(generated)} (לפני ${diffHours} שעות)`
@@ -97,6 +100,15 @@ function formatScanTime(generatedAtIso: string): string {
 
   if (diffDays <= 1) return 'נסרק אתמול — לחץ לסריקה חדשה'
   return `נסרק לפני ${diffDays} ימים — לחץ לסריקה חדשה`
+}
+
+// Days between a saved scan's generatedAt and now, in Israel calendar days
+// (not 24h periods) — so a scan from 11pm yesterday still reads as "1 day".
+function ilDaysSince(generatedAtIso: string): number {
+  const savedDayStr = ilDateStr(new Date(generatedAtIso))
+  const todayStr = ilDateStr(new Date())
+  if (savedDayStr === todayStr) return 0
+  return Math.round((new Date(todayStr).getTime() - new Date(savedDayStr).getTime()) / 86_400_000)
 }
 
 export default function SwingScannerPage() {
@@ -119,6 +131,22 @@ export default function SwingScannerPage() {
         setWatchlist(map)
       })
       .catch(() => { /* ignore */ })
+  }, [])
+
+  // Show the last scan instantly on load instead of an empty page — persisted
+  // client-side so it survives reloads without hitting the server. Deferred
+  // to a microtask so the localStorage read/setState pair isn't synchronous
+  // within the effect body (matches this file's other on-mount fetch+setState
+  // effects, which are async for the same reason).
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const raw = localStorage.getItem(LS_KEY)
+        if (!raw) return
+        const parsed = JSON.parse(raw) as ScanResponse
+        if (parsed && Array.isArray(parsed.results)) setData(parsed)
+      } catch { /* ignore corrupt/blocked storage */ }
+    })
   }, [])
 
   const toggleWatchlist = useCallback(async (bareSymbol: string, isIsraeli: boolean) => {
@@ -156,6 +184,7 @@ export default function SwingScannerPage() {
         const d: ScanResponse = await r.json()
         if (!r.ok || d.error) { setError(d.error ?? 'שגיאה בסריקה'); return }
         setData(d)
+        try { localStorage.setItem(LS_KEY, JSON.stringify(d)) } catch { /* ignore quota/private-mode errors */ }
       })
       .catch(() => setError('שגיאת רשת — נסה שוב'))
       .finally(() => setLoading(false))
@@ -176,6 +205,11 @@ export default function SwingScannerPage() {
       )
       .sort((a, b) => b.changePercent - a.changePercent)
   }, [data, filters])
+
+  const staleDays = data ? ilDaysSince(data.generatedAt) : 0
+  const staleMessage = staleDays === 1
+    ? 'הסריקה האחרונה הייתה אתמול — לחץ סרוק לעדכון'
+    : `הסריקה האחרונה הייתה לפני ${staleDays} ימים — לחץ סרוק לעדכון`
 
   const setF = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setActivePreset(null)
@@ -216,7 +250,7 @@ export default function SwingScannerPage() {
             style={{ background: '#3b82f6', color: '#fff' }}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {loading ? 'סורק...' : data ? 'סרוק מחדש 🔄' : 'סרוק 🔍'}
+            {loading ? 'סורק...' : 'סרוק'}
           </button>
           {data && !loading && (
             <span className="text-[10px]" style={{ color: '#64748b' }}>{formatScanTime(data.generatedAt)}</span>
@@ -355,6 +389,13 @@ export default function SwingScannerPage() {
       {error && (
         <div className="rounded-xl p-4 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
           ⚠ {error}
+        </div>
+      )}
+
+      {/* ─── Stale cached scan banner ─── */}
+      {!loading && data && staleDays > 0 && (
+        <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}>
+          ⏱ {staleMessage}
         </div>
       )}
 
