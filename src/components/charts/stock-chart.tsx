@@ -39,26 +39,29 @@ const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: 'baseline', label: 'Baseline' },
 ]
 
-// '1D' fetches a 4-day intraday window (weekend-safe) and is sliced down to
-// the last trading day actually present in the results — see filterLastDay().
-const RANGE_MAP: Record<TimeRange, { range: string; interval: string }> = {
-  '1D':  { range: '1d',  interval: '5m'  },
-  '1W':  { range: '5d',  interval: '60m' },
-  '1M':  { range: '1mo', interval: '1d'  },
-  '3M':  { range: '3mo', interval: '1d'  },
-  '6M':  { range: '6mo', interval: '1d'  },
-  '1Y':  { range: '1y',  interval: '1d'  },
-  '5Y':  { range: '5y',  interval: '1wk' },
-  'MAX': { range: 'max', interval: '1mo' },
+// Multiple TimeRange buttons can share the same underlying fetch ("tier") —
+// e.g. 1D/1W/1M all pull the same 1-year daily dataset and only differ in
+// how many of the most recent bars are initially focused on. Switching
+// between ranges that share a tierKey never refetches or rebuilds the
+// chart — it only adjusts the visible window (see selectTimeRange below).
+// Switching to a range with a different tierKey does refetch/rebuild.
+const TIER_MAP: Record<TimeRange, { tierKey: string; range: string; interval: string; focusBars: number }> = {
+  '1D':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: 1 },
+  '1W':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: 5 },
+  '1M':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: 21 },
+  '3M':  { tierKey: 'd-2y',   range: '2y',  interval: '1d',  focusBars: 63 },
+  '6M':  { tierKey: 'd-3y',   range: '3y',  interval: '1d',  focusBars: 126 },
+  '1Y':  { tierKey: 'd-5y',   range: '5y',  interval: '1d',  focusBars: 252 },
+  '5Y':  { tierKey: 'w-10y',  range: '10y', interval: '1wk', focusBars: 260 },
+  'MAX': { tierKey: 'w-max',  range: 'max', interval: '1wk', focusBars: Infinity },
 }
 
-// Keep only bars from the most recent calendar date present — turns the
-// (deliberately wider, weekend-safe) 4-day intraday fetch into "just the
-// last trading day".
-function filterLastTradingDay(rows: ChartData[]): ChartData[] {
-  if (rows.length === 0) return rows
-  const lastDay = rows[rows.length - 1].date.slice(0, 10)
-  return rows.filter(r => r.date.slice(0, 10) === lastDay)
+// Sets the chart's visible window to the last `n` bars of a `total`-bar
+// series (with a little right padding), or shows everything when n is not
+// finite (MAX) or already covers the whole dataset.
+function focusLastNBars(chart: IChartApi, total: number, n: number) {
+  if (!isFinite(n) || n >= total) { chart.timeScale().fitContent(); return }
+  chart.timeScale().setVisibleLogicalRange({ from: total - n, to: total - 1 + 2 })
 }
 
 const IND_META: Record<IndicatorKey, { label: string; color: string }> = {
@@ -231,6 +234,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
   const chartDataRef      = useRef<ChartData[]>([])
   const indicatorDataRef  = useRef<ChartData[]>([])
   const activeIndicatorsRef = useRef<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
+  const timeRangeRef = useRef<TimeRange>('3M')
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [timeRange, setTimeRange]     = useState<TimeRange>('3M')
@@ -368,12 +372,28 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
     })
   }, [addRsiPane, removeRsiPane])
 
+  // ── Select a time range — imperative zoom when it shares a tier with the ──
+  // currently-loaded data (no refetch, no rebuild); otherwise just updates
+  // state and lets the main effect's tierKey dependency handle refetching.
+  const selectTimeRange = useCallback((next: TimeRange) => {
+    const sameTier = TIER_MAP[timeRangeRef.current].tierKey === TIER_MAP[next].tierKey
+    timeRangeRef.current = next
+    setTimeRange(next)
+    if (sameTier && chartRef.current && chartDataRef.current.length > 0) {
+      focusLastNBars(chartRef.current, chartDataRef.current.length, TIER_MAP[next].focusBars)
+    }
+  }, [])
+
+  // Ranges sharing a tierKey share a fetch — this is what the chart-owning
+  // effect actually depends on, not the raw timeRange (see selectTimeRange).
+  const tierKey = TIER_MAP[timeRange].tierKey
+
   // ── Build & own the ENTIRE chart lifecycle ────────────────────────────────────
-  // The only effect that ever touches the Lightweight Charts instance. Fully
-  // refetches + rebuilds on ticker/timeRange change; indicator toggles and
-  // level placement are handled by the imperative callbacks above instead of
-  // re-running this effect, so switching an indicator on/off never refetches
-  // data or tears down the chart.
+  // The only effect that ever touches the Lightweight Charts instance.
+  // Refetches + rebuilds when ticker or tierKey change — NOT on every
+  // timeRange change, since ranges sharing a tier reuse the same data (see
+  // selectTimeRange). Indicator toggles and level placement are handled by
+  // the imperative callbacks above instead of re-running this effect.
   useEffect(() => {
     if (!containerRef.current) return
     const container = containerRef.current
@@ -383,7 +403,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
     const tip = document.createElement('div')
 
     setLoading(true)
-    const { range, interval } = RANGE_MAP[timeRange]
+    const { range, interval } = TIER_MAP[timeRangeRef.current]
 
     Promise.all([
       fetch(`/api/stock/${ticker}/history?range=${range}&interval=${interval}`).then(r => r.json()),
@@ -397,7 +417,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
 
         const parseRows = (json: unknown): ChartData[] =>
           Array.isArray(json) ? json as ChartData[] : ((json as { data?: ChartData[] })?.data ?? [])
-        const rows = timeRange === '1D' ? filterLastTradingDay(parseRows(mainJson)) : parseRows(mainJson)
+        const rows = parseRows(mainJson)
         const indRows = parseRows(indJson)
 
         chartDataRef.current = rows
@@ -419,11 +439,8 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           rightPriceScale: { borderColor: '#1e293b' },
           timeScale: {
             borderColor: '#1e293b', timeVisible: true, secondsVisible: false,
-            // 1D packs ~70-80 five-minute bars into the chart — a wider
-            // spacing there leaves too few, oversized candles. Other ranges
-            // (daily+ bars) read better at the wider spacing.
-            barSpacing: timeRange === '1D' ? 6 : 12,
-            minBarSpacing: timeRange === '1D' ? 4 : 8,
+            barSpacing: 12,
+            minBarSpacing: 8,
           },
         })
         chartRef.current = chart
@@ -567,11 +584,11 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         resizeObs.observe(container)
 
-        // fitContent() now works correctly because the indicator overlays
-        // above were clipped to mainVisibleRange — without that clip, this
-        // would zoom out to fit their full (up to 1-year) span instead of
-        // the candles' actual range.
-        chart.timeScale().fitContent()
+        // Focus the view on the selected range's own bar count, right-aligned
+        // — never fitContent() to the full tier fetch (up to 10y of data).
+        // fitContent() is only ever used as focusLastNBars()'s fallback when
+        // the requested window covers the whole fetched dataset (e.g. MAX).
+        focusLastNBars(chart, rows.length, TIER_MAP[timeRangeRef.current].focusBars)
       })
       .catch(() => {
         if (!dead) { setHasData(false); setLoading(false) }
@@ -590,7 +607,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
       indSeriesRef.current.clear()
       priceLinesRef.current.clear()
     }
-  }, [ticker, timeRange, chartType, applyLevel, drawPriceLine, addRsiPane])
+  }, [ticker, tierKey, chartType, applyLevel, drawPriceLine, addRsiPane])
 
   // ── AI recommendation ──────────────────────────────────────────────────────
   const fetchAiLevels = useCallback(() => {
@@ -686,7 +703,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 overflow-x-auto scrollbar-none">
         <div className="flex gap-0.5 flex-shrink-0">
           {TIME_RANGES.map(r => (
-            <button key={r} onClick={() => setTimeRange(r)}
+            <button key={r} onClick={() => selectTimeRange(r)}
               className="px-2.5 py-1 rounded text-xs font-medium transition-colors focus:outline-none"
               style={timeRange === r
                 ? { background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid #3b82f6' }

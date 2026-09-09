@@ -6,7 +6,7 @@ import { tickerSchema, validationError } from '@/lib/schemas'
 
 export const dynamic = 'force-dynamic'
 
-const VALID_RANGES = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '5y', 'max'] as const
+const VALID_RANGES = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '3y', '5y', '10y', 'max'] as const
 type ChartInterval = '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m' | '1h' | '1d' | '5d' | '1wk' | '1mo' | '3mo'
 const VALID_INTERVALS: ChartInterval[] = ['5m', '15m', '60m', '1d', '1wk', '1mo']
 
@@ -23,7 +23,10 @@ function getRangeDate(range: string): string {
     case '3mo': d.setMonth(d.getMonth() - 3); break
     case '6mo': d.setMonth(d.getMonth() - 6); break
     case '1y':  d.setFullYear(d.getFullYear() - 1); break
+    case '2y':  d.setFullYear(d.getFullYear() - 2); break
+    case '3y':  d.setFullYear(d.getFullYear() - 3); break
     case '5y':  d.setFullYear(d.getFullYear() - 5); break
+    case '10y': d.setFullYear(d.getFullYear() - 10); break
     case 'max': return '2000-01-01'
     default:    d.setFullYear(d.getFullYear() - 1)
   }
