@@ -24,12 +24,12 @@ import { X, Bot, Loader2, CheckCircle, Sparkles } from 'lucide-react'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ChartData = { date: string; open: number; high: number; low: number; close: number; volume: number }
-type TimeRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y'
+type TimeRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | 'MAX'
 type ChartType = 'candles' | 'ohlc' | 'line' | 'area' | 'baseline'
 type IndicatorKey = 'ema8' | 'sma200' | 'ema20' | 'sma50' | 'rsi' | 'bb'
 type LevelType = 'entry' | 'stop' | 'target'
 
-const TIME_RANGES: TimeRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y']
+const TIME_RANGES: TimeRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'MAX']
 
 const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: 'candles',  label: 'נרות' },
@@ -39,40 +39,26 @@ const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: 'baseline', label: 'Baseline' },
 ]
 
-// Each TimeRange is just a candle size — every range fetches the maximum
-// history Yahoo Finance has, at that candle size, and the chart always
-// fitContent()s to show all of it. `mergeEvery`, when set, combines that
-// many consecutive fetched candles into one wider candle (Yahoo has no
-// native 6-month/1-year/5-year interval, so those are built by merging
-// fetched 3-month/monthly bars).
-const TIER_MAP: Record<TimeRange, { interval: string; mergeEvery?: number; candleLabel: string }> = {
-  '1D': { interval: '1d',  candleLabel: 'נר יומי' },
-  '1W': { interval: '1wk', candleLabel: 'נר שבועי' },
-  '1M': { interval: '1mo', candleLabel: 'נר חודשי' },
-  '3M': { interval: '3mo', candleLabel: 'נר רבעוני' },
-  '6M': { interval: '3mo', mergeEvery: 2,  candleLabel: 'נר חצי שנתי' },
-  '1Y': { interval: '1mo', mergeEvery: 12, candleLabel: 'נר שנתי' },
-  '5Y': { interval: '1mo', mergeEvery: 60, candleLabel: 'נר 5 שנים' },
+// '1D' fetches a 4-day intraday window (weekend-safe) and is sliced down to
+// the last trading day actually present in the results — see filterLastDay().
+const RANGE_MAP: Record<TimeRange, { range: string; interval: string }> = {
+  '1D':  { range: '1d',  interval: '5m'  },
+  '1W':  { range: '5d',  interval: '60m' },
+  '1M':  { range: '1mo', interval: '1d'  },
+  '3M':  { range: '3mo', interval: '1d'  },
+  '6M':  { range: '6mo', interval: '1d'  },
+  '1Y':  { range: '1y',  interval: '1d'  },
+  '5Y':  { range: '5y',  interval: '1wk' },
+  'MAX': { range: 'max', interval: '1mo' },
 }
 
-// Combines every `n` consecutive candles into one wider candle (open of the
-// first, close of the last, high/low across all, volume summed) — used to
-// build the 6M/1Y/5Y ranges out of fetched 3-month/monthly bars.
-function mergeBars(rows: ChartData[], n: number): ChartData[] {
-  const out: ChartData[] = []
-  for (let i = 0; i < rows.length; i += n) {
-    const chunk = rows.slice(i, i + n)
-    if (chunk.length === 0) continue
-    out.push({
-      date: chunk[chunk.length - 1].date,
-      open: chunk[0].open,
-      high: Math.max(...chunk.map(c => c.high)),
-      low: Math.min(...chunk.map(c => c.low)),
-      close: chunk[chunk.length - 1].close,
-      volume: chunk.reduce((sum, c) => sum + c.volume, 0),
-    })
-  }
-  return out
+// Keep only bars from the most recent calendar date present — turns the
+// (deliberately wider, weekend-safe) 4-day intraday fetch into "just the
+// last trading day".
+function filterLastTradingDay(rows: ChartData[]): ChartData[] {
+  if (rows.length === 0) return rows
+  const lastDay = rows[rows.length - 1].date.slice(0, 10)
+  return rows.filter(r => r.date.slice(0, 10) === lastDay)
 }
 
 const IND_META: Record<IndicatorKey, { label: string; color: string }> = {
@@ -247,7 +233,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
   const activeIndicatorsRef = useRef<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
 
   // ── State ────────────────────────────────────────────────────────────────────
-  const [timeRange, setTimeRange]     = useState<TimeRange>('3M')
+  const [timeRange, setTimeRange]     = useState<TimeRange>('1D')
   const [chartType, setChartType]     = useState<ChartType>('candles')
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set(DEFAULT_INDICATORS))
   const [loading, setLoading]         = useState(true)
@@ -384,10 +370,10 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
 
   // ── Build & own the ENTIRE chart lifecycle ────────────────────────────────────
   // The only effect that ever touches the Lightweight Charts instance. Fully
-  // refetches + rebuilds on ticker/timeRange change (every range is its own
-  // candle size fetched at Yahoo's max history, so there's no sharing between
-  // ranges to preserve); indicator toggles and level placement are handled by
-  // the imperative callbacks above instead of re-running this effect.
+  // refetches + rebuilds on ticker/timeRange change; indicator toggles and
+  // level placement are handled by the imperative callbacks above instead of
+  // re-running this effect, so switching an indicator on/off never refetches
+  // data or tears down the chart.
   useEffect(() => {
     if (!containerRef.current) return
     const container = containerRef.current
@@ -397,10 +383,10 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
     const tip = document.createElement('div')
 
     setLoading(true)
-    const { interval, mergeEvery } = TIER_MAP[timeRange]
+    const { range, interval } = RANGE_MAP[timeRange]
 
     Promise.all([
-      fetch(`/api/stock/${ticker}/history?range=max&interval=${interval}`).then(r => r.json()),
+      fetch(`/api/stock/${ticker}/history?range=${range}&interval=${interval}`).then(r => r.json()),
       fetch(`/api/stock/${ticker}/history?range=1y&interval=1d`).then(r => r.json()),
       fetch(`/api/chart-levels/${ticker}`)
         .then(r => (r.ok ? r.json() : { entry: null, stop: null, target: null }))
@@ -411,7 +397,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
 
         const parseRows = (json: unknown): ChartData[] =>
           Array.isArray(json) ? json as ChartData[] : ((json as { data?: ChartData[] })?.data ?? [])
-        const rows = mergeEvery ? mergeBars(parseRows(mainJson), mergeEvery) : parseRows(mainJson)
+        const rows = timeRange === '1D' ? filterLastTradingDay(parseRows(mainJson)) : parseRows(mainJson)
         const indRows = parseRows(indJson)
 
         chartDataRef.current = rows
@@ -433,9 +419,11 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
           rightPriceScale: { borderColor: '#1e293b' },
           timeScale: {
             borderColor: '#1e293b', timeVisible: true, secondsVisible: false,
-            barSpacing: 6,
-            minBarSpacing: 3,
-            rightOffset: 5,
+            // 1D packs ~70-80 five-minute bars into the chart — a wider
+            // spacing there leaves too few, oversized candles. Other ranges
+            // (daily+ bars) read better at the wider spacing.
+            barSpacing: timeRange === '1D' ? 6 : 12,
+            minBarSpacing: timeRange === '1D' ? 4 : 8,
           },
         })
         chartRef.current = chart
@@ -579,16 +567,11 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         resizeObs.observe(container)
 
-        // fitContent() computes a dynamic bar spacing that stretches candles
-        // to fill the full container width whenever there are few bars in
-        // view (e.g. the merged 6M/1Y/5Y ranges) — re-locking to our own
-        // fixed spacing afterward, then setting an explicit logical range
-        // sized from that spacing (rather than from the total bar count),
-        // keeps candle width constant instead of letting it balloon.
+        // fitContent() now works correctly because the indicator overlays
+        // above were clipped to mainVisibleRange — without that clip, this
+        // would zoom out to fit their full (up to 1-year) span instead of
+        // the candles' actual range.
         chart.timeScale().fitContent()
-        chart.timeScale().applyOptions({ barSpacing: 6, minBarSpacing: 3, rightOffset: 5 })
-        const visibleBars = Math.max(1, Math.floor(container.clientWidth / 6) - 5)
-        chart.timeScale().setVisibleLogicalRange({ from: rows.length - visibleBars, to: rows.length - 1 + 5 })
       })
       .catch(() => {
         if (!dead) { setHasData(false); setLoading(false) }
@@ -712,10 +695,6 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
             </button>
           ))}
         </div>
-
-        <span className="text-[11px] flex-shrink-0" style={{ color: '#64748b' }}>
-          {TIER_MAP[timeRange].candleLabel}
-        </span>
 
         {/* Level + AI buttons */}
         <div className="flex items-center gap-1.5 flex-shrink-0 mr-auto">
