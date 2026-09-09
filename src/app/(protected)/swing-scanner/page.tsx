@@ -101,7 +101,7 @@ function formatScanTime(generatedAtIso: string): string {
 
 export default function SwingScannerPage() {
   const [data, setData] = useState<ScanResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [activePreset, setActivePreset] = useState<string | null>(null)
@@ -161,8 +161,6 @@ export default function SwingScannerPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { runScan(false) }, [runScan])
-
   const filtered = useMemo(() => {
     if (!data) return []
     return data.results
@@ -212,13 +210,13 @@ export default function SwingScannerPage() {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <button
-            onClick={() => runScan(true)}
+            onClick={() => runScan(!!data)}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
             style={{ background: '#3b82f6', color: '#fff' }}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {loading ? 'סורק...' : 'סרוק מחדש 🔄'}
+            {loading ? 'סורק...' : data ? 'סרוק מחדש 🔄' : 'סרוק 🔍'}
           </button>
           {data && !loading && (
             <span className="text-[10px]" style={{ color: '#64748b' }}>{formatScanTime(data.generatedAt)}</span>
@@ -365,6 +363,13 @@ export default function SwingScannerPage() {
         <div className="rounded-xl p-10 flex flex-col items-center justify-center gap-3" style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.05)' }}>
           <Loader2 className="h-6 w-6 animate-spin" style={{ color: '#3b82f6' }} />
           <p className="text-sm" style={{ color: '#64748b' }}>סורק את כל מניות S&amp;P 500 — זה עשוי לקחת עד דקה...</p>
+        </div>
+      )}
+
+      {/* ─── Idle — nothing scanned yet ─── */}
+      {!loading && !data && !error && (
+        <div className="rounded-xl p-10 text-center" style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <p className="text-sm" style={{ color: '#94a3b8' }}>הגדר פילטרים ולחץ &quot;סרוק&quot; כדי להתחיל</p>
         </div>
       )}
 

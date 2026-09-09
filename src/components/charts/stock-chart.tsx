@@ -43,14 +43,14 @@ const CHART_TYPES: { key: ChartType; label: string }[] = [
 // history Yahoo Finance has, at that candle size. Yahoo has no native
 // 6-month/1-year/5-year interval, so those are built by merging fetched
 // 3-month/monthly bars (see mergeEvery + mergeBars below).
-const RANGE_MAP: Record<TimeRange, { interval: string; mergeEvery?: number }> = {
-  '1D': { interval: '1d'  },
-  '1W': { interval: '1wk' },
-  '1M': { interval: '1mo' },
-  '3M': { interval: '3mo' },
-  '6M': { interval: '3mo', mergeEvery: 2  },
-  '1Y': { interval: '1mo', mergeEvery: 12 },
-  '5Y': { interval: '1mo', mergeEvery: 60 },
+const RANGE_MAP: Record<TimeRange, { interval: string; mergeEvery?: number; candleLabel: string }> = {
+  '1D': { interval: '1d',  candleLabel: 'נר יומי' },
+  '1W': { interval: '1wk', candleLabel: 'נר שבועי' },
+  '1M': { interval: '1mo', candleLabel: 'נר חודשי' },
+  '3M': { interval: '3mo', candleLabel: 'נר רבעוני' },
+  '6M': { interval: '3mo', mergeEvery: 2,  candleLabel: 'נר חצי שנתי' },
+  '1Y': { interval: '1mo', mergeEvery: 12, candleLabel: 'נר שנתי' },
+  '5Y': { interval: '1mo', mergeEvery: 60, candleLabel: 'נר 5 שנים' },
 }
 
 // Combines every `n` consecutive candles into one wider candle (open of the
@@ -704,6 +704,10 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
             </button>
           ))}
         </div>
+
+        <span className="text-[11px] flex-shrink-0" style={{ color: '#64748b' }}>
+          {RANGE_MAP[timeRange].candleLabel}
+        </span>
 
         {/* Level + AI buttons */}
         <div className="flex items-center gap-1.5 flex-shrink-0 mr-auto">

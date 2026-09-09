@@ -404,7 +404,7 @@ export default function Navbar({ user }: NavbarProps) {
     {searchOpen && (
       <div
         className="fixed inset-0 z-[60] flex flex-col md:hidden"
-        style={{ background: 'var(--iq-surface)' }}
+        style={{ background: 'var(--iq-surface)', paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* Search bar row */}
         <div className="flex items-center gap-2 px-3 py-3 border-b" style={{ borderColor: 'var(--iq-border)' }}>
