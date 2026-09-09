@@ -397,6 +397,12 @@ export default function Navbar({ user }: NavbarProps) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
+              <Link href="/academy" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
+                <GraduationCap className="h-4 w-4" />
+                אקדמיה
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link href="/guide" className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
                 <BookOpen className="h-4 w-4" />
                 מדריך למשתמש
