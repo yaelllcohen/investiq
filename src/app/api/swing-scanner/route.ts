@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { yahooFinance } from '@/lib/yahoo-finance'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { SWING_SCAN_UNIVERSE } from '@/lib/swing-universe'
+import { chunk, runBatched } from '@/lib/scan-utils'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 180
@@ -62,22 +63,6 @@ function rsi14(closes: number[]): number | null {
   ag /= 14; al /= 14
   if (al === 0) return 100
   return 100 - 100 / (1 + ag / al)
-}
-
-async function runBatched<T, R>(items: T[], batchSize: number, fn: (item: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
-  const out: PromiseSettledResult<R>[] = []
-  for (let i = 0; i < items.length; i += batchSize) {
-    const chunk = items.slice(i, i + batchSize)
-    const settled = await Promise.allSettled(chunk.map(fn))
-    out.push(...settled)
-  }
-  return out
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = []
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
-  return out
 }
 
 async function fetchRsi(fetchSymbol: string): Promise<number | null> {

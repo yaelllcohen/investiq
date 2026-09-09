@@ -26,6 +26,8 @@ import {
   X,
   LineChart,
   Radar,
+  Percent,
+  ScanSearch,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -58,6 +60,8 @@ const navLinks = [
   { href: '/trade-coach', label: 'מאמן עסקאות', icon: BookOpen },
   { href: '/swing-scanner',  label: 'סורק סווינג',    icon: Radar },
   { href: '/swing-patterns', label: 'תבניות סווינג',  icon: LineChart },
+  { href: '/fundamental-scanner', label: 'סורק פונדמנטלי', icon: ScanSearch },
+  { href: '/risk-calculator', label: 'מחשבון סיכונים', icon: Percent },
   { href: '/journal',     label: 'יומן',         icon: NotebookPen },
   { href: '/goals',       label: 'מטרות',        icon: Target },
   { href: '/psychology',  label: 'פסיכולוגיה',   icon: Brain },
