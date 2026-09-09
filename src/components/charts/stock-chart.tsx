@@ -533,8 +533,13 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
         })
         resizeObs.observe(container)
 
-        chart.timeScale().fitContent()
-        chart.timeScale().scrollToRealTime()
+        // NOT fitContent() — it fits the visible range to EVERY series on the
+        // chart, including the SMA/EMA overlays, which are computed from a
+        // full year of daily data regardless of the selected range. On '1D'
+        // that zoomed the view out to a year and squeezed the actual 1-2 days
+        // of candles into a sliver. Set the visible range explicitly to the
+        // main series' own span instead, so the candles always fill the chart.
+        chart.timeScale().setVisibleRange({ from: toTime(rows[0]), to: toTime(rows[rows.length - 1]) })
       })
       .catch(() => {
         if (!dead) { setHasData(false); setLoading(false) }
