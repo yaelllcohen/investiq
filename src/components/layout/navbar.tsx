@@ -28,6 +28,8 @@ import {
   Radar,
   Percent,
   ScanSearch,
+  Bot,
+  ChevronDown,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -49,25 +51,67 @@ interface NavbarProps {
   } | null
 }
 
+// Flat list — used for the mobile hamburger drawer, which shows every page.
 const navLinks = [
   { href: '/dashboard',   label: 'לוח בקרה',  icon: LayoutDashboard },
   { href: '/portfolio',   label: 'תיק',        icon: PieChart },
   { href: '/simulator',   label: 'סימולטור',   icon: TrendingUp },
+  { href: '/risk-calculator', label: 'מחשבון סיכונים', icon: Percent },
   { href: '/ai-screener', label: 'סינון AI',   icon: Sparkles },
   { href: '/ai-chat',     label: "צ'אט AI",    icon: MessageSquare },
-  { href: '/watchlist',   label: 'מעקב',       icon: Star },
   { href: '/ai-compare',  label: 'השוואה',      icon: GitCompareArrows },
-  { href: '/trade-coach', label: 'מאמן עסקאות', icon: BookOpen },
+  { href: '/ai-analysis', label: 'ניתוח AI',    icon: Bot },
   { href: '/swing-scanner',  label: 'סורק סווינג',    icon: Radar },
   { href: '/swing-patterns', label: 'תבניות סווינג',  icon: LineChart },
   { href: '/fundamental-scanner', label: 'סורק פונדמנטלי', icon: ScanSearch },
-  { href: '/risk-calculator', label: 'מחשבון סיכונים', icon: Percent },
+  { href: '/trade-coach', label: 'מאמן עסקאות', icon: BookOpen },
   { href: '/journal',     label: 'יומן',         icon: NotebookPen },
   { href: '/goals',       label: 'מטרות',        icon: Target },
   { href: '/psychology',  label: 'פסיכולוגיה',   icon: Brain },
+  { href: '/watchlist',   label: 'מעקב',       icon: Star },
   { href: '/wealth-sim',  label: 'סימולטור עתידי', icon: Calculator },
   { href: '/academy',     label: 'אקדמיה',         icon: GraduationCap },
   { href: '/guide',       label: 'מדריך',           icon: BookOpen },
+]
+
+// Grouped structure — used for the desktop top nav, which was overflowing
+// with too many flat links. Dashboard stays as its own standalone link.
+const navGroups: { label: string; emoji: string; items: { href: string; label: string; icon: typeof PieChart }[] }[] = [
+  {
+    label: 'תיק', emoji: '📊',
+    items: [
+      { href: '/portfolio', label: 'תיק השקעות', icon: PieChart },
+      { href: '/simulator', label: 'סימולטור', icon: TrendingUp },
+      { href: '/risk-calculator', label: 'מחשבון סיכונים', icon: Percent },
+    ],
+  },
+  {
+    label: 'AI', emoji: '🤖',
+    items: [
+      { href: '/ai-screener', label: 'סינון AI', icon: Sparkles },
+      { href: '/ai-chat', label: "צ'אט AI", icon: MessageSquare },
+      { href: '/ai-compare', label: 'השוואה', icon: GitCompareArrows },
+      { href: '/ai-analysis', label: 'ניתוח', icon: Bot },
+    ],
+  },
+  {
+    label: 'מסחר', emoji: '📈',
+    items: [
+      { href: '/swing-scanner', label: 'סורק סווינג', icon: Radar },
+      { href: '/swing-patterns', label: 'תבניות סווינג', icon: LineChart },
+      { href: '/fundamental-scanner', label: 'סורק פונדמנטלי', icon: ScanSearch },
+      { href: '/trade-coach', label: 'מאמן עסקאות', icon: BookOpen },
+    ],
+  },
+  {
+    label: 'מעקב', emoji: '📓',
+    items: [
+      { href: '/journal', label: 'יומן', icon: NotebookPen },
+      { href: '/goals', label: 'מטרות', icon: Target },
+      { href: '/psychology', label: 'פסיכולוגיה', icon: Brain },
+      { href: '/watchlist', label: 'מעקב', icon: Star },
+    ],
+  },
 ]
 
 function getInitials(name?: string | null, email?: string | null): string {
@@ -153,23 +197,55 @@ export default function Navbar({ user }: NavbarProps) {
           InvestIQ
         </Link>
 
-        {/* ── Nav Links — visible from lg (1024px) up ── */}
+        {/* ── Nav Groups — visible from lg (1024px) up ── */}
         <ul className="hidden lg:flex items-center gap-1 flex-1 justify-center">
-          {navLinks.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname === href || pathname.startsWith(href + '/')
+          <li>
+            <Link
+              href="/dashboard"
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+                pathname === '/dashboard' ? 'nav-active' : 'hover:bg-white/5'
+              )}
+              style={{ color: pathname === '/dashboard' ? undefined : 'var(--iq-text-2)' }}
+            >
+              <LayoutDashboard className="h-3.5 w-3.5 shrink-0" />
+              לוח בקרה
+            </Link>
+          </li>
+          {navGroups.map(group => {
+            const isGroupActive = group.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))
             return (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
-                    isActive ? 'nav-active' : 'hover:bg-white/5'
-                  )}
-                  style={{ color: isActive ? undefined : 'var(--iq-text-2)' }}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  {label}
-                </Link>
+              <li key={group.label}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap focus:outline-none',
+                        isGroupActive ? 'nav-active' : 'hover:bg-white/5'
+                      )}
+                      style={{ color: isGroupActive ? undefined : 'var(--iq-text-2)' }}
+                    >
+                      <span aria-hidden>{group.emoji}</span>
+                      {group.label}
+                      <ChevronDown className="h-3 w-3 shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="center"
+                    className="w-52"
+                    style={{ background: 'var(--iq-elevated)', border: '1px solid var(--iq-border)' }}
+                  >
+                    {group.items.map(({ href, label, icon: Icon }) => (
+                      <DropdownMenuItem key={href} asChild>
+                        <Link href={href} className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--iq-text-2)' }}>
+                          <Icon className="h-4 w-4" />
+                          {label}
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </li>
             )
           })}
