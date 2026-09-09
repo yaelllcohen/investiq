@@ -39,26 +39,50 @@ const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: 'baseline', label: 'Baseline' },
 ]
 
-// Multiple TimeRange buttons can share the same underlying fetch ("tier") —
-// e.g. 1D/1W/1M all pull the same 1-year daily dataset and only differ in
-// how many of the most recent bars are initially focused on. Switching
-// between ranges that share a tierKey never refetches or rebuilds the
-// chart — it only adjusts the visible window (see selectTimeRange below).
-// Switching to a range with a different tierKey does refetch/rebuild.
-const TIER_MAP: Record<TimeRange, { tierKey: string; range: string; interval: string; focusBars: number }> = {
-  '1D':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: 1 },
-  '1W':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: 5 },
-  '1M':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: 21 },
-  '3M':  { tierKey: 'd-2y',   range: '2y',  interval: '1d',  focusBars: 63 },
-  '6M':  { tierKey: 'd-3y',   range: '3y',  interval: '1d',  focusBars: 126 },
-  '1Y':  { tierKey: 'd-5y',   range: '5y',  interval: '1d',  focusBars: 252 },
-  '5Y':  { tierKey: 'w-10y',  range: '10y', interval: '1wk', focusBars: 260 },
-  'MAX': { tierKey: 'w-max',  range: 'max', interval: '1wk', focusBars: Infinity },
+// Each TimeRange has its own candle size + lookback window. Ranges that
+// happen to fetch the exact same interval+range ("tier") — currently only
+// 5Y and MAX, both monthly/all-time — share a single fetch; switching
+// between them never refetches or rebuilds the chart, it only adjusts the
+// visible window (see selectTimeRange below). `mergeEvery`, when set,
+// combines that many consecutive fetched candles into one wider candle
+// (used for 6M, which is built from merged 3-month bars) before display.
+const TIER_MAP: Record<TimeRange, {
+  tierKey: string; range: string; interval: string; focusBars: number
+  mergeEvery?: number; candleLabel: string
+}> = {
+  '1D':  { tierKey: 'd-1y',   range: '1y',  interval: '1d',  focusBars: Infinity, candleLabel: 'נר יומי' },
+  '1W':  { tierKey: 'w-2y',   range: '2y',  interval: '1wk', focusBars: Infinity, candleLabel: 'נר שבועי' },
+  '1M':  { tierKey: 'm-5y',   range: '5y',  interval: '1mo', focusBars: Infinity, candleLabel: 'נר חודשי' },
+  '3M':  { tierKey: 'q-5y',   range: '5y',  interval: '3mo', focusBars: Infinity, candleLabel: 'נר רבעוני' },
+  '6M':  { tierKey: 'q-10y-h2', range: '10y', interval: '3mo', mergeEvery: 2, focusBars: Infinity, candleLabel: 'נר חצי שנתי' },
+  '1Y':  { tierKey: 'm-10y',  range: '10y', interval: '1mo', focusBars: Infinity, candleLabel: 'נר חודשי' },
+  '5Y':  { tierKey: 'm-max',  range: 'max', interval: '1mo', focusBars: 60,       candleLabel: 'נר חודשי' },
+  'MAX': { tierKey: 'm-max',  range: 'max', interval: '1mo', focusBars: Infinity, candleLabel: 'נר חודשי' },
+}
+
+// Combines every `n` consecutive candles into one wider candle (open of the
+// first, close of the last, high/low across all, volume summed) — used to
+// build the 6M range's half-year candles out of fetched 3-month bars.
+function mergeBars(rows: ChartData[], n: number): ChartData[] {
+  const out: ChartData[] = []
+  for (let i = 0; i < rows.length; i += n) {
+    const chunk = rows.slice(i, i + n)
+    if (chunk.length === 0) continue
+    out.push({
+      date: chunk[chunk.length - 1].date,
+      open: chunk[0].open,
+      high: Math.max(...chunk.map(c => c.high)),
+      low: Math.min(...chunk.map(c => c.low)),
+      close: chunk[chunk.length - 1].close,
+      volume: chunk.reduce((sum, c) => sum + c.volume, 0),
+    })
+  }
+  return out
 }
 
 // Sets the chart's visible window to the last `n` bars of a `total`-bar
 // series (with a little right padding), or shows everything when n is not
-// finite (MAX) or already covers the whole dataset.
+// finite or already covers the whole dataset.
 function focusLastNBars(chart: IChartApi, total: number, n: number) {
   if (!isFinite(n) || n >= total) { chart.timeScale().fitContent(); return }
   chart.timeScale().setVisibleLogicalRange({ from: total - n, to: total - 1 + 2 })
@@ -403,7 +427,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
     const tip = document.createElement('div')
 
     setLoading(true)
-    const { range, interval } = TIER_MAP[timeRangeRef.current]
+    const { range, interval, mergeEvery } = TIER_MAP[timeRangeRef.current]
 
     Promise.all([
       fetch(`/api/stock/${ticker}/history?range=${range}&interval=${interval}`).then(r => r.json()),
@@ -417,7 +441,7 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
 
         const parseRows = (json: unknown): ChartData[] =>
           Array.isArray(json) ? json as ChartData[] : ((json as { data?: ChartData[] })?.data ?? [])
-        const rows = parseRows(mainJson)
+        const rows = mergeEvery ? mergeBars(parseRows(mainJson), mergeEvery) : parseRows(mainJson)
         const indRows = parseRows(indJson)
 
         chartDataRef.current = rows
@@ -712,6 +736,10 @@ export default function StockChart({ ticker }: { ticker: string; currentPrice?: 
             </button>
           ))}
         </div>
+
+        <span className="text-[11px] flex-shrink-0" style={{ color: '#64748b' }}>
+          {TIER_MAP[timeRange].candleLabel}
+        </span>
 
         {/* Level + AI buttons */}
         <div className="flex items-center gap-1.5 flex-shrink-0 mr-auto">

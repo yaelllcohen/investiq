@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 const VALID_RANGES = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '3y', '5y', '10y', 'max'] as const
 type ChartInterval = '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m' | '1h' | '1d' | '5d' | '1wk' | '1mo' | '3mo'
-const VALID_INTERVALS: ChartInterval[] = ['5m', '15m', '60m', '1d', '1wk', '1mo']
+const VALID_INTERVALS: ChartInterval[] = ['5m', '15m', '60m', '1d', '1wk', '1mo', '3mo']
 
 function getRangeDate(range: string): string {
   const now = new Date()
