@@ -7,6 +7,8 @@ import AddToWatchlistButton from '@/components/watchlist/add-button'
 import AddToPortfolioButton from '@/components/portfolio/add-button'
 import ScoreCard from '@/components/stock/score-card'
 import WhyMoving from '@/components/stock/why-moving'
+import FundamentalAnalysis from '@/components/stock/fundamental-analysis'
+import { buildFundamentalAnalysis, FUNDAMENTAL_MODULES } from '@/lib/fundamentals'
 import { formatCurrency, formatNumber, formatPercent, getBgChangeColor } from '@/lib/utils'
 import { Bot, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -120,11 +122,13 @@ export default async function StockPage({ params }: StockPageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let summary: any = null
 
+  const summaryModules = ['summaryDetail', 'assetProfile', 'defaultKeyStatistics', ...FUNDAMENTAL_MODULES]
+
   const [quoteResult, summaryResult] = await Promise.allSettled([
     yahooFinance.quote(symbol, {}, { validateResult: false }),
     yahooFinance.quoteSummary(
       symbol,
-      { modules: ['summaryDetail', 'assetProfile', 'defaultKeyStatistics'] },
+      { modules: summaryModules },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { validateResult: false } as any
     ),
@@ -141,7 +145,7 @@ export default async function StockPage({ params }: StockPageProps) {
         yahooFinance.quote(taSym, {}, { validateResult: false }),
         yahooFinance.quoteSummary(
           taSym,
-          { modules: ['summaryDetail', 'assetProfile', 'defaultKeyStatistics'] },
+          { modules: summaryModules },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           { validateResult: false } as any
         ),
@@ -190,6 +194,10 @@ export default async function StockPage({ params }: StockPageProps) {
   const beta = typeof betaRaw === 'number' ? betaRaw : null
   const qType = (q.quoteType ?? '').toUpperCase()
   const isCrypto = qType === 'CRYPTOCURRENCY'
+
+  // Fundamentals (income statement, margins, analyst coverage, etc.) only
+  // make sense for actual equities — ETFs/funds/bonds/crypto don't have them.
+  const fundamentalRows = qType === 'EQUITY' ? buildFundamentalAnalysis(s).rows : []
 
   const metrics: { label: string; value: string }[] = isCrypto
     ? [
@@ -322,6 +330,9 @@ export default async function StockPage({ params }: StockPageProps) {
 
       {/* ─── Chart ─── */}
       <ChartTabs ticker={symbol} currentPrice={price} exchange={q.exchange} quoteType={qType} />
+
+      {/* ─── Fundamental Analysis ─── */}
+      <FundamentalAnalysis ticker={symbol} rows={fundamentalRows} />
 
       {/* ─── AI Score ─── */}
       <ScoreCard symbol={symbol} />
