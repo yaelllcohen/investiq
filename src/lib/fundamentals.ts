@@ -3,10 +3,10 @@
 // the stock page's "ניתוח פונדמנטלי" section, plus a compact `facts` object
 // reused to build the AI-forecast prompt so the two never disagree.
 
-// recommendationTrend and earningsHistory aren't in the original 6-module
-// request, but they're the only Yahoo modules that actually carry the
-// analyst buy/hold/sell breakdown and the EPS-beat/miss history the
-// requested rows (#3, #8) need.
+// recommendationTrend, earningsHistory and calendarEvents aren't in the
+// original 6-module request, but they're the only Yahoo modules that
+// actually carry the analyst buy/hold/sell breakdown, the EPS-beat/miss
+// history, and the next earnings date that the requested rows need.
 export const FUNDAMENTAL_MODULES = [
   'incomeStatementHistory',
   'incomeStatementHistoryQuarterly',
@@ -17,6 +17,7 @@ export const FUNDAMENTAL_MODULES = [
   'earningsTrend',
   'earningsHistory',
   'recommendationTrend',
+  'calendarEvents',
 ] as const
 
 export type FundamentalStatus = 'good' | 'warn' | 'bad'
@@ -50,9 +51,22 @@ export interface FundamentalFacts {
   sharesTrend: 'up' | 'down' | 'flat' | 'unknown'
 }
 
+export interface QuarterlyEarningsRow {
+  quarterLabel: string
+  revenue: number | null
+  epsActual: number | null
+  epsEstimate: number | null
+  surprisePct: number | null
+  netIncome: number | null
+  beat: boolean | null
+}
+
 export interface FundamentalAnalysis {
   rows: FundamentalRow[]
   facts: FundamentalFacts
+  quarterlyEarnings: QuarterlyEarningsRow[]
+  nextEarningsDate: string | null
+  earningsSoon: boolean
   currency: string
 }
 
@@ -95,9 +109,11 @@ export function buildFundamentalAnalysis(summary: any): FundamentalAnalysis {
     : (num(financialData.earningsGrowth) != null ? num(financialData.earningsGrowth)! * 100 : null)
 
   // ── EPS + surprise ─────────────────────────────────────────────────────────
+  // Yahoo's surprisePercent is a fraction (0.045 = +4.5%), not a percent.
   const trailingEps = num(keyStats.trailingEps)
   const lastEarnings = earningsHistory[earningsHistory.length - 1]
-  const epsSurprisePct = lastEarnings ? num(lastEarnings.surprisePercent as number) : null
+  const lastSurpriseRaw = lastEarnings ? num(lastEarnings.surprisePercent as number) : null
+  const epsSurprisePct = lastSurpriseRaw != null ? lastSurpriseRaw * 100 : null
   const epsBeat = epsSurprisePct != null ? epsSurprisePct >= 0 : null
 
   // ── Margins ────────────────────────────────────────────────────────────────
@@ -144,6 +160,51 @@ export function buildFundamentalAnalysis(summary: any): FundamentalAnalysis {
     ? (shareCounts[0] > shareCounts[shareCounts.length - 1] * 1.01 ? 'up'
       : shareCounts[0] < shareCounts[shareCounts.length - 1] * 0.99 ? 'down' : 'flat')
     : 'unknown'
+
+  // ── Quarterly earnings table — merges earningsHistory (EPS actual/estimate,
+  // ascending oldest→newest) with incomeStatementHistoryQuarterly (revenue,
+  // net income, descending newest→oldest) by matching each entry's quarter
+  // end date, since the two modules don't share a common index order.
+  const dateKey = (v: unknown): string | null => {
+    const d = v instanceof Date ? v : new Date(v as string)
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10)
+  }
+  const incomeByDate = new Map<string, Record<string, unknown>>()
+  for (const inc of incomeQuarterly) {
+    const key = dateKey(inc.endDate)
+    if (key) incomeByDate.set(key, inc)
+  }
+  const quarterlyEarnings: QuarterlyEarningsRow[] = earningsHistory
+    .slice()
+    .reverse() // newest first
+    .slice(0, 4)
+    .map(e => {
+      const key = dateKey(e.quarter)
+      const inc = key ? incomeByDate.get(key) : undefined
+      const epsActual = num(e.epsActual as number)
+      const epsEstimate = num(e.epsEstimate as number)
+      const surpriseRaw = num(e.surprisePercent as number)
+      const qDate = e.quarter instanceof Date ? e.quarter : (key ? new Date(key) : null)
+      const quarterLabel = qDate ? `Q${Math.floor(qDate.getUTCMonth() / 3) + 1} ${qDate.getUTCFullYear()}` : '—'
+      return {
+        quarterLabel,
+        revenue: inc ? num(inc.totalRevenue as number) : null,
+        epsActual, epsEstimate,
+        surprisePct: surpriseRaw != null ? surpriseRaw * 100 : null,
+        netIncome: inc ? num(inc.netIncome as number) : null,
+        beat: epsActual != null && epsEstimate != null ? epsActual >= epsEstimate : null,
+      }
+    })
+
+  // ── Next earnings date ──────────────────────────────────────────────────────
+  const nextEarningsRaw = summary?.calendarEvents?.earnings?.earningsDate?.[0] as Date | string | undefined
+  const nextEarningsDateObj = nextEarningsRaw ? new Date(nextEarningsRaw) : null
+  const nextEarningsDate = nextEarningsDateObj && !isNaN(nextEarningsDateObj.getTime())
+    ? nextEarningsDateObj.toISOString().slice(0, 10)
+    : null
+  const earningsSoon = nextEarningsDateObj != null
+    && (nextEarningsDateObj.getTime() - Date.now()) <= 14 * 86_400_000
+    && (nextEarningsDateObj.getTime() - Date.now()) >= 0
 
   const rows: FundamentalRow[] = []
 
@@ -232,6 +293,9 @@ export function buildFundamentalAnalysis(summary: any): FundamentalAnalysis {
   return {
     rows,
     currency,
+    quarterlyEarnings,
+    nextEarningsDate,
+    earningsSoon,
     facts: {
       revenueYoYPct: revYoYPct, revenueQoQPct: revQoQPct, netIncomeYoYPct,
       trailingEps, epsSurprisePct,

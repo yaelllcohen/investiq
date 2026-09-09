@@ -197,7 +197,7 @@ export default async function StockPage({ params }: StockPageProps) {
 
   // Fundamentals (income statement, margins, analyst coverage, etc.) only
   // make sense for actual equities — ETFs/funds/bonds/crypto don't have them.
-  const fundamentalRows = qType === 'EQUITY' ? buildFundamentalAnalysis(s).rows : []
+  const fundamentals = qType === 'EQUITY' ? buildFundamentalAnalysis(s) : null
 
   const metrics: { label: string; value: string }[] = isCrypto
     ? [
@@ -332,7 +332,13 @@ export default async function StockPage({ params }: StockPageProps) {
       <ChartTabs ticker={symbol} currentPrice={price} exchange={q.exchange} quoteType={qType} />
 
       {/* ─── Fundamental Analysis ─── */}
-      <FundamentalAnalysis ticker={symbol} rows={fundamentalRows} />
+      <FundamentalAnalysis
+        ticker={symbol}
+        rows={fundamentals?.rows ?? []}
+        quarterlyEarnings={fundamentals?.quarterlyEarnings ?? []}
+        nextEarningsDate={fundamentals?.nextEarningsDate ?? null}
+        earningsSoon={fundamentals?.earningsSoon ?? false}
+      />
 
       {/* ─── AI Score ─── */}
       <ScoreCard symbol={symbol} />

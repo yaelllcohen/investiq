@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
-import type { FundamentalRow } from '@/lib/fundamentals'
+import { Bot, Loader2, TrendingUp, TrendingDown, Minus, CalendarClock } from 'lucide-react'
+import type { FundamentalRow, QuarterlyEarningsRow } from '@/lib/fundamentals'
 
 interface AiForecastResult {
   trend: 'strengthening' | 'weakening' | 'mixed'
@@ -36,7 +36,23 @@ const TREND_META: Record<AiForecastResult['trend'], { label: string; icon: typeo
   mixed:         { label: 'מעורבת', icon: Minus, color: '#94a3b8' },
 }
 
-export default function FundamentalAnalysis({ ticker, rows }: { ticker: string; rows: FundamentalRow[] }) {
+function formatFundMoney(v: number): string {
+  const abs = Math.abs(v)
+  const sign = v < 0 ? '-' : ''
+  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(2)}B`
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(1)}M`
+  return `${sign}${abs.toFixed(0)}`
+}
+
+interface FundamentalAnalysisProps {
+  ticker: string
+  rows: FundamentalRow[]
+  quarterlyEarnings: QuarterlyEarningsRow[]
+  nextEarningsDate: string | null
+  earningsSoon: boolean
+}
+
+export default function FundamentalAnalysis({ ticker, rows, quarterlyEarnings, nextEarningsDate, earningsSoon }: FundamentalAnalysisProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
@@ -83,6 +99,59 @@ export default function FundamentalAnalysis({ ticker, rows }: { ticker: string; 
             </div>
           ))}
         </div>
+
+        {/* ─── Next earnings date ─── */}
+        {nextEarningsDate && (
+          <div className="flex items-center gap-2 p-4 border-t border-white/5 flex-wrap">
+            <CalendarClock className="h-4 w-4 shrink-0" style={{ color: '#64748b' }} />
+            <span className="text-sm" style={{ color: '#cbd5e1' }}>
+              דוח רווחים הבא: {new Date(nextEarningsDate).toLocaleDateString('he-IL', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </span>
+            {earningsSoon && (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+                📅 דוח קרוב
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* ─── Quarterly earnings table ─── */}
+        {quarterlyEarnings.length > 0 && (
+          <div className="p-4 border-t border-white/5 overflow-x-auto">
+            <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: '#64748b' }}>4 הרבעונים האחרונים</div>
+            <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="text-right border-b border-white/5" style={{ color: '#64748b' }}>
+                  {['רבעון', 'הכנסות', 'EPS בפועל', 'EPS צפוי', 'הפתעה %', 'רווח נקי'].map(h => (
+                    <th key={h} className="pb-2 pl-3 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {quarterlyEarnings.map((q, i) => (
+                  <tr key={i} className="border-b border-white/5 last:border-0">
+                    <td className="py-2.5 pl-3 font-medium" style={{ color: '#e2e8f0' }}>{q.quarterLabel}</td>
+                    <td className="py-2.5 pl-3 tabular-nums" style={{ color: '#94a3b8' }}>
+                      {q.revenue != null ? formatFundMoney(q.revenue) : '—'}
+                    </td>
+                    <td className="py-2.5 pl-3 font-semibold tabular-nums" style={{ color: q.beat == null ? '#94a3b8' : q.beat ? '#22c55e' : '#ef4444' }}>
+                      {q.epsActual != null ? q.epsActual.toFixed(2) : '—'} {q.beat != null && (q.beat ? '✅' : '❌')}
+                    </td>
+                    <td className="py-2.5 pl-3 tabular-nums" style={{ color: '#94a3b8' }}>
+                      {q.epsEstimate != null ? q.epsEstimate.toFixed(2) : '—'}
+                    </td>
+                    <td className="py-2.5 pl-3 font-semibold tabular-nums" style={{ color: q.surprisePct == null ? '#94a3b8' : q.surprisePct >= 0 ? '#22c55e' : '#ef4444' }}>
+                      {q.surprisePct != null ? `${q.surprisePct >= 0 ? '+' : ''}${q.surprisePct.toFixed(1)}%` : '—'}
+                    </td>
+                    <td className="py-2.5 pl-3 tabular-nums" style={{ color: '#94a3b8' }}>
+                      {q.netIncome != null ? formatFundMoney(q.netIncome) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* ─── AI forecast ─── */}
         <div className="p-4 border-t border-white/5" style={{ background: '#0d1117' }}>

@@ -56,15 +56,15 @@ export async function GET(
     return NextResponse.json({ error: 'אין מספיק נתונים פונדמנטליים לניתוח' }, { status: 422 })
   }
 
-  const { rows, facts } = buildFundamentalAnalysis(summary)
+  const { rows, facts, quarterlyEarnings, nextEarningsDate, earningsSoon } = buildFundamentalAnalysis(summary)
 
   const f = (v: number | null, suffix = '') => v != null ? `${v.toFixed(1)}${suffix}` : 'N/A'
 
   const prompt = `החזר JSON בלבד. אסור טקסט לפני או אחרי. אסור markdown. אסור backticks.
 
-You are a fundamental equity analyst. Based ONLY on the data below for ${sym}, assess whether the company is fundamentally strengthening or weakening.
+You are a fundamental equity analyst. Use Google Search to verify and enrich the data below for ${sym} — check for its latest earnings report, recent news, and current analyst estimates — then assess whether the company is fundamentally strengthening or weakening.
 
-FUNDAMENTAL DATA:
+FUNDAMENTAL DATA (from Yahoo Finance, may be a few minutes to a few hours stale — prefer fresher data found via search when they conflict):
 revenue_growth_yoy=${f(facts.revenueYoYPct, '%')} | revenue_growth_qoq=${f(facts.revenueQoQPct, '%')}
 net_income_growth_yoy=${f(facts.netIncomeYoYPct, '%')}
 trailing_eps=${f(facts.trailingEps)} | eps_surprise_last_quarter=${f(facts.epsSurprisePct, '%')}
@@ -75,18 +75,23 @@ analyst_buy=${facts.analystBuy ?? 'N/A'} | analyst_hold=${facts.analystHold ?? '
 trailing_pe=${f(facts.trailingPE)} | forward_pe=${f(facts.forwardPE)}
 next_quarter_earnings_growth_estimate=${f(facts.nextQuarterGrowthPct, '%')} | next_year_earnings_growth_estimate=${f(facts.nextYearGrowthPct, '%')}
 shares_outstanding_trend=${facts.sharesTrend}
+next_earnings_date=${nextEarningsDate ?? 'N/A'}
+last_4_quarters=${JSON.stringify(quarterlyEarnings)}
 
 INSTRUCTIONS:
 - trend: "strengthening" or "weakening" or "mixed" — is the company fundamentally strengthening or weakening?
-- risks: array of 2-4 short Hebrew strings, the main fundamental risks
+- risks: array of 2-4 short Hebrew strings (each under 15 words), the main fundamental risks (incorporate anything material you find via search — e.g. pending litigation, guidance cuts, competitive threats)
 - outlook: one of "positive", "negative", "neutral"
-- reasoning: 2-3 Hebrew sentences explaining the outlook
+- reasoning: AT MOST 3 short Hebrew sentences (under 60 words total) explaining the outlook — be concise, do not list every search finding
 - score: integer 0-100, overall fundamental health score
 
-REQUIRED JSON:
+REQUIRED JSON (output exactly this shape, nothing else):
 {"trend":"strengthening","risks":["הסבר בעברית"],"outlook":"positive","reasoning":"הסבר בעברית","score":0}`
 
-  // ── Call Gemini ───────────────────────────────────────────────────────────
+  // ── Call Gemini (Google Search grounding) ──────────────────────────────────
+  // responseMimeType can't be combined with tool use, so JSON-only output is
+  // enforced purely through the prompt instructions above (with a regex
+  // fallback below in case the model still wraps it in prose/markdown).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let aiData: Record<string, any>
   try {
@@ -95,11 +100,14 @@ REQUIRED JSON:
       contents: prompt,
       config: {
         systemInstruction: 'You are a JSON-only API. Output valid JSON and nothing else.',
-        maxOutputTokens: 1000,
-        responseMimeType: 'application/json',
+        // Search-grounded thinking can otherwise consume the entire output
+        // budget on invisible "thoughts" and leave nothing for the actual
+        // JSON (finishReason MAX_TOKENS with empty text) — cap thinking and
+        // give the total plenty of headroom so that can't happen.
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 1024 },
         temperature: 0.2,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        thinkingConfig: { thinkingBudget: 0 } as any,
+        tools: [{ googleSearch: {} }],
       },
     })
 
@@ -131,6 +139,9 @@ REQUIRED JSON:
   const result = {
     symbol: sym,
     rows,
+    quarterlyEarnings,
+    nextEarningsDate,
+    earningsSoon,
     trend,
     risks,
     outlook,
