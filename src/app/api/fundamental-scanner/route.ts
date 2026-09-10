@@ -10,8 +10,14 @@ import { chunk, runBatched } from '@/lib/scan-utils'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 180
 
-const SCAN_CACHE_TTL = 24 * 3600 * 1000 // 24 hours — the full universe scan
-const AI_CACHE_TTL = 24 * 3600 * 1000   // 24 hours — per-ticker AI score
+const IL_TZ = 'Asia/Jerusalem'
+// Both the full scan and the per-ticker AI verdicts are cached only for the
+// rest of the calendar day they were generated on (Israel time) — a new day
+// means a fresh scan on the first visit. Matches the swing scanner.
+const ilDateStr = (d: Date) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: IL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+const isSameIlDay = (d: Date) => ilDateStr(d) === ilDateStr(new Date())
+
 const QUOTE_CHUNK_SIZE = 40
 const SUMMARY_BATCH_SIZE = 15
 const AI_BATCH_SIZE = 5
@@ -75,7 +81,7 @@ async function fetchAiScore(row: FundamentalScanRow): Promise<{ score: number; r
     const cached = await prisma.aiScore.findUnique({
       where: { symbol_type: { symbol: row.symbol, type: 'fundamental_scan_ai' } },
     })
-    if (cached && Date.now() - cached.createdAt.getTime() < AI_CACHE_TTL) {
+    if (cached && isSameIlDay(cached.createdAt)) {
       return JSON.parse(cached.scoreJson)
     }
   } catch { /* re-compute on cache miss */ }
@@ -149,13 +155,13 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const force = searchParams.get('force') === '1'
 
-  // ── Cache check (24h) ────────────────────────────────────────────────────
+  // ── Cache check — valid until midnight of the day it was generated ────────
   if (!force) {
     try {
       const cached = await prisma.aiScore.findUnique({
         where: { symbol_type: { symbol: 'FUNDAMENTAL_SCAN', type: 'universe_scan' } },
       })
-      if (cached && Date.now() - cached.createdAt.getTime() < SCAN_CACHE_TTL) {
+      if (cached && isSameIlDay(cached.createdAt)) {
         return NextResponse.json({ ...JSON.parse(cached.scoreJson), cached: true })
       }
     } catch { /* re-compute on cache miss */ }

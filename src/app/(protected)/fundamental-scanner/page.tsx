@@ -1,8 +1,19 @@
 'use client'
 
-import { Fragment, useCallback, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, RefreshCw, Loader2 } from 'lucide-react'
+
+const IL_TZ = 'Asia/Jerusalem'
+
+function formatScanTime(generatedAtIso: string): string {
+  const generated = new Date(generatedAtIso)
+  const now = new Date()
+  const dateStr = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: IL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+  const timeStr = generated.toLocaleTimeString('he-IL', { timeZone: IL_TZ, hour: '2-digit', minute: '2-digit' })
+  if (dateStr(generated) === dateStr(now)) return `נסרק היום בשעה ${timeStr}`
+  return `נסרק ב-${generated.toLocaleDateString('he-IL', { timeZone: IL_TZ, day: '2-digit', month: '2-digit' })} בשעה ${timeStr}`
+}
 
 interface ScanRow {
   symbol: string
@@ -52,7 +63,7 @@ function scoreColor(score: number): string {
 
 export default function FundamentalScannerPage() {
   const [data, setData] = useState<ScanResponse | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -68,6 +79,12 @@ export default function FundamentalScannerPage() {
       .catch(() => setError('שגיאת רשת — נסה שוב'))
       .finally(() => setLoading(false))
   }, [])
+
+  // On page load: hits the server cache — same-day results come back instantly
+  // (no scan), a new day triggers a fresh scan server-side automatically.
+  // Deferred to a microtask so the fetch's setState isn't synchronous within
+  // the effect body.
+  useEffect(() => { queueMicrotask(() => runScan(false)) }, [runScan])
 
   return (
     <div className="space-y-6">
@@ -87,17 +104,17 @@ export default function FundamentalScannerPage() {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <button
-            onClick={() => runScan(!!data)}
+            onClick={() => runScan(true)}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
             style={{ background: '#3b82f6', color: '#fff' }}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {loading ? 'סורק...' : 'סרוק'}
+            {loading ? 'סורק...' : 'סרוק מחדש'}
           </button>
           {data && !loading && (
             <span className="text-[10px]" style={{ color: '#64748b' }}>
-              {data.cached ? 'תוצאה שמורה (24 שעות) · ' : ''}עודכן {new Date(data.generatedAt).toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+              {formatScanTime(data.generatedAt)}
             </span>
           )}
         </div>
@@ -117,13 +134,6 @@ export default function FundamentalScannerPage() {
           <p className="text-sm text-center" style={{ color: '#64748b' }}>
             סורק את כל מניות S&amp;P 500 ומריץ ניתוח AI על המועמדות המובילות — זה עשוי לקחת מספר דקות...
           </p>
-        </div>
-      )}
-
-      {/* ─── Idle — nothing scanned yet ─── */}
-      {!loading && !data && !error && (
-        <div className="rounded-xl p-10 text-center" style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <p className="text-sm" style={{ color: '#94a3b8' }}>לחץ &quot;סרוק&quot; כדי להתחיל</p>
         </div>
       )}
 
