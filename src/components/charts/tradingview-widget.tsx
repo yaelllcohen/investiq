@@ -47,9 +47,8 @@ export default function TradingViewWidget({ symbol }: { symbol: string }) {
     }
   }
 
-  // No studies param — TradingView's own chart already shows volume by
-  // default, so requesting Volume@tv-basicstudies just duplicated it.
-  const src = `https://www.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${encodeURIComponent(symbol)}&interval=D&hide_side_toolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=1a1a2e&theme=dark&style=1&timezone=Asia%2FJerusalem&locale=he_IL`
+  // studies: EMA 8 + SMA 200 shown by default (MAExp / MASimple basic studies).
+  const src = `https://www.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${encodeURIComponent(symbol)}&interval=D&hide_side_toolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=1a1a2e&theme=dark&style=1&timezone=Asia%2FJerusalem&locale=he_IL&studies=MAExp%40tv-basicstudies%7C%7B%22length%22%3A8%7D%2CMASimple%40tv-basicstudies%7C%7B%22length%22%3A200%7D`
 
   return (
     <div className="rounded-xl overflow-hidden border border-white/5 relative" style={{ background: '#111827', height: 600 }}>
